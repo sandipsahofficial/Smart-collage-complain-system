@@ -369,7 +369,7 @@ def student_dashboard():
     if 'user_id' not in session or session['role'] != 'student':
         return redirect(url_for('login'))
 
-    user = User.query.get_or_404(session['user_id'])
+    user = db.get_or_404(User, session['user_id'])
     complaints = Complaint.query.filter_by(student_id=user.id).order_by(Complaint.created_at.desc()).all()
     return render_template('student_dashboard.html', current_user=user, complaints=complaints)
 
@@ -383,7 +383,7 @@ def change_student_password():
     current_password = request.form.get('current_password', '')
     new_password = request.form.get('new_password', '')
     confirm_password = request.form.get('confirm_password', '')
-    student = User.query.get_or_404(session['user_id'])
+    student = db.get_or_404(User, session['user_id'])
 
     if not check_password_hash(student.password, current_password):
         flash('The current password is incorrect.', 'error')
@@ -423,7 +423,7 @@ def staff_dashboard():
         return redirect(url_for('login'))
 
     complaints = Complaint.query.filter_by(assigned_to=session['user_id']).order_by(Complaint.created_at.desc()).all()
-    current_user = User.query.get_or_404(session['user_id'])
+    current_user = db.get_or_404(User, session['user_id'])
     return render_template('staff_dashboard.html', complaints=complaints, current_user=current_user)
 
 
@@ -436,7 +436,7 @@ def change_staff_password():
     current_password = request.form.get('current_password', '')
     new_password = request.form.get('new_password', '')
     confirm_password = request.form.get('confirm_password', '')
-    staff = User.query.get_or_404(session['user_id'])
+    staff = db.get_or_404(User, session['user_id'])
 
     if not check_password_hash(staff.password, current_password):
         flash('The current password is incorrect.', 'error')
@@ -526,7 +526,7 @@ def assign_complaint(complaint_id):
     if 'user_id' not in session or session['role'] != 'admin':
         return redirect(url_for('login'))
 
-    complaint = Complaint.query.get_or_404(complaint_id)
+    complaint = db.get_or_404(Complaint, complaint_id)
     staff_id = request.form.get('staff_id')
 
     if not staff_id:
@@ -551,7 +551,7 @@ def update_status(complaint_id):
     if 'user_id' not in session or session['role'] != 'staff':
         return redirect(url_for('login'))
 
-    complaint = Complaint.query.get_or_404(complaint_id)
+    complaint = db.get_or_404(Complaint, complaint_id)
     if complaint.assigned_to != session['user_id']:
         flash('You can only update complaints assigned to you.', 'error')
         return redirect(url_for('staff_dashboard'))
