@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart College Complaint System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="auth-page">
+    <div class="auth-shell">
+        <div class="auth-visual">
+            <div class="brand-badge">SCCS</div>
+            <h1>Smart College & Hostel Complaint System</h1>
+            <p>Resolve college and hostel issues faster with one support workflow for students, staff, and admins.
+            </p>
+
+            <div class="feature-list">
+                <span>Live tracking</span>
+                <span>Staff assignment</span>
+                <span>Fast resolution</span>
+            </div>
+
+            <div class="stat-card">
+                <strong>24/7</strong>
+                <span>College-wide visibility</span>
+            </div>
+        </div>
+
+        <div class="login-container">
+            <div class="login-header">
+                <span class="eyebrow">Welcome back</span>
+                <h2>Sign in</h2>
+                <p>Access your college and hostel dashboard</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form action="/" method="POST" class="auth-form">
+                <div class="field-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter your username" required
+                        autocomplete="off">
+                </div>
+
+                <div class="field-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                </div>
+
+                <button type="submit" class="primary-btn">Sign In</button>
+            </form>
+
+            <p class="signup-link">New here? <a href="/register">Create an account</a></p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

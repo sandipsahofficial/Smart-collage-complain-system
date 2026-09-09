@@ -1,0 +1,510 @@
+import os
+
+from dotenv import load_dotenv
+from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask_mail import Mail
+from sqlalchemy import inspect, text
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+
+from database import Complaint, Comment, User, db
+
+load_dotenv()
+
+app = Flask(__name__)
+
+app.secret_key = os.getenv('SECRET_KEY', 'development-only-change-this-secret-key')
+database_url = os.getenv('DATABASE_URL', 'sqlite:///college.db')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your_email@gmail.com'
+app.config['MAIL_PASSWORD'] = 'your_app_password'
+mail = Mail(app)
+
+db.init_app(app)
+
+
+def migrate_sqlite_schema():
+    """Add columns introduced after the initial SQLite database was created."""
+    inspector = inspect(db.engine)
+    migrations = {
+        'user': {
+            'full_name': 'VARCHAR(120)',
+            'phone': 'VARCHAR(30)',
+            'hostel_name': 'VARCHAR(80)',
+            'block': 'VARCHAR(50)',
+            'room_number': 'VARCHAR(20)',
+        },
+        'complaint': {
+            'location_type': "VARCHAR(30) DEFAULT 'Hostel'",
+            'campus_area': "VARCHAR(100) DEFAULT 'Main Hostel'",
+            'hostel_name': "VARCHAR(80) DEFAULT 'Main Hostel'",
+            'block': "VARCHAR(50) DEFAULT 'A'",
+            'room_number': "VARCHAR(20) DEFAULT '101'",
+            'priority': "VARCHAR(20) DEFAULT 'Medium'",
+            'image_filename': 'VARCHAR(255)',
+            'rating': 'INTEGER',
+            'feedback_text': 'TEXT',
+        },
+    }
+
+    for table_name, columns in migrations.items():
+        existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
+        for column_name, column_definition in columns.items():
+            if column_name not in existing_columns:
+                db.session.execute(
+                    text(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}')
+                )
+    db.session.commit()
+
+
+with app.app_context():
+    db.create_all()
+    migrate_sqlite_schema()
+
+    demo_admin = User.query.filter_by(username='admin').first()
+    if demo_admin is None:
+        db.session.add(User(
+            username='admin',
+            password=generate_password_hash('admin123'),
+            role='admin',
+            full_name='Hostel Administrator',
+            email='admin@college.edu',
+            phone='9000000001',
+            hostel_name='Main Hostel'
+        ))
+    elif demo_admin.phone == '9000000001':
+        demo_admin.phone = '+919000000001'
+
+    demo_staff = User.query.filter_by(username='staff').first()
+    if demo_staff is None:
+        db.session.add(User(
+            username='staff',
+            password=generate_password_hash('staff123'),
+            role='staff',
+            full_name='Maintenance Staff',
+            email='staff@college.edu',
+            phone='9000000002',
+            hostel_name='Main Hostel'
+        ))
+    elif demo_staff.phone == '9000000002':
+        demo_staff.phone = '+919000000002'
+
+    demo_student = User.query.filter_by(username='student').first()
+    if demo_student is None:
+        db.session.add(User(
+            username='student',
+            password=generate_password_hash('student123'),
+            role='student',
+            full_name='Student User',
+            email='student@college.edu',
+            phone='9000000003',
+            hostel_name='Main Hostel',
+            block='A',
+            room_number='101'
+        ))
+    elif demo_student.phone == '9000000003':
+        demo_student.phone = '+919000000003'
+
+    db.session.commit()
+
+    admin_accounts = User.query.filter_by(role='admin').order_by(User.id).all()
+    for extra_admin in admin_accounts[1:]:
+        extra_admin.role = 'staff'
+    db.session.commit()
+
+
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+
+        user = User.query.filter_by(username=username).first()
+
+        if user and (user.password == password or check_password_hash(user.password, password)):
+            if user.password == password and not user.password.startswith('pbkdf2:'):
+                user.password = generate_password_hash(password)
+                db.session.commit()
+
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['role'] = user.role
+
+            if user.role == 'student':
+                return redirect(url_for('student_dashboard'))
+            if user.role == 'admin':
+                return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('staff_dashboard'))
+
+        flash('Invalid username or password!', 'error')
+        return redirect(url_for('login'))
+
+    return render_template('login.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        full_name = request.form.get('full_name', '').strip()
+        email = request.form.get('email', '').strip()
+        hostel_name = request.form.get('hostel_name', '').strip()
+        block = request.form.get('block', '').strip()
+        room_number = request.form.get('room_number', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        role = request.form.get('role', '').strip()
+
+        if not username or not password or not role or not full_name:
+            flash('Please complete the required fields.', 'error')
+            return redirect(url_for('register'))
+
+        if role != 'student':
+            flash('Staff accounts can only be created by an administrator.', 'error')
+            return redirect(url_for('register'))
+
+        if password != confirm_password:
+            flash('Passwords do not match!', 'error')
+            return redirect(url_for('register'))
+
+        existing_user = User.query.filter_by(username=username).first()
+        if existing_user:
+            flash('Username already exists! Please login.', 'error')
+            return redirect(url_for('register'))
+
+        new_user = User(
+            username=username,
+            password=generate_password_hash(password),
+            role=role,
+            full_name=full_name,
+            email=email or None,
+            hostel_name=hostel_name or None,
+            block=block or None,
+            room_number=room_number or None,
+        )
+        db.session.add(new_user)
+        db.session.commit()
+
+        flash('Registration successful! Please login.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
+
+
+@app.route('/admin/change-password', methods=['POST'])
+def change_admin_password():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Only the logged-in administrator can change this password.', 'error')
+        return redirect(url_for('login'))
+
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+
+    admin = User.query.filter_by(id=session['user_id'], role='admin').first()
+    if not admin or not check_password_hash(admin.password, current_password):
+        flash('The current admin password is incorrect.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    if len(new_password) < 8:
+        flash('The new password must contain at least 8 characters.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    if new_password != confirm_password:
+        flash('The new passwords do not match.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    admin.password = generate_password_hash(new_password)
+    db.session.commit()
+    flash('Admin password changed successfully. You can now sign in.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/create-staff', methods=['POST'])
+def create_staff():
+    if 'user_id' not in session or session['role'] != 'admin':
+        flash('Only an administrator can create staff accounts.', 'error')
+        return redirect(url_for('login'))
+
+    username = request.form.get('username', '').strip()
+    full_name = request.form.get('full_name', '').strip()
+    email = request.form.get('email', '').strip()
+    password = request.form.get('password', '')
+    confirm_password = request.form.get('confirm_password', '')
+
+    if not username or not full_name or not password:
+        flash('Complete the required staff account fields.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    if password != confirm_password:
+        flash('Staff passwords do not match.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    if User.query.filter_by(username=username).first():
+        flash('That username is already in use.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    db.session.add(User(
+        username=username,
+        password=generate_password_hash(password),
+        role='staff',
+        full_name=full_name,
+        email=email or None,
+    ))
+    db.session.commit()
+    flash('Staff account created successfully.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/delete-staff/<int:staff_id>', methods=['POST'])
+def delete_staff(staff_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Only an administrator can delete staff accounts.', 'error')
+        return redirect(url_for('login'))
+
+    staff = User.query.filter_by(id=staff_id, role='staff').first()
+    if not staff:
+        flash('Staff account not found.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    Complaint.query.filter_by(assigned_to=staff.id).update({'assigned_to': None})
+    db.session.delete(staff)
+    db.session.commit()
+    flash('Staff account deleted. Assigned complaints are now unassigned.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/delete-student/<int:student_id>', methods=['POST'])
+def delete_student(student_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Only an administrator can delete student accounts.', 'error')
+        return redirect(url_for('login'))
+
+    student = User.query.filter_by(id=student_id, role='student').first()
+    if not student:
+        flash('Student account not found.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    student_complaints = Complaint.query.filter_by(student_id=student.id).all()
+    for complaint in student_complaints:
+        Comment.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        db.session.delete(complaint)
+    db.session.delete(student)
+    db.session.commit()
+    flash('Student account deleted along with its complaint history.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/student_dashboard')
+def student_dashboard():
+    if 'user_id' not in session or session['role'] != 'student':
+        return redirect(url_for('login'))
+
+    user = User.query.get_or_404(session['user_id'])
+    complaints = Complaint.query.filter_by(student_id=user.id).order_by(Complaint.created_at.desc()).all()
+    return render_template('student_dashboard.html', current_user=user, complaints=complaints)
+
+
+@app.route('/student/change-password', methods=['POST'])
+def change_student_password():
+    if 'user_id' not in session or session.get('role') != 'student':
+        flash('Only a logged-in student can change this password.', 'error')
+        return redirect(url_for('login'))
+
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    student = User.query.get_or_404(session['user_id'])
+
+    if not check_password_hash(student.password, current_password):
+        flash('The current password is incorrect.', 'error')
+        return redirect(url_for('student_dashboard'))
+    if len(new_password) < 8:
+        flash('The new password must contain at least 8 characters.', 'error')
+        return redirect(url_for('student_dashboard'))
+    if new_password != confirm_password:
+        flash('The new passwords do not match.', 'error')
+        return redirect(url_for('student_dashboard'))
+
+    student.password = generate_password_hash(new_password)
+    db.session.commit()
+    flash('Password changed successfully.', 'success')
+    return redirect(url_for('student_dashboard'))
+
+
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if 'user_id' not in session or session['role'] != 'admin':
+        return redirect(url_for('login'))
+
+    complaints = Complaint.query.order_by(Complaint.created_at.desc()).all()
+    staff_list = User.query.filter_by(role='staff').all()
+    student_list = User.query.filter_by(role='student').order_by(User.username.asc()).all()
+    return render_template(
+        'admin_dashboard.html',
+        complaints=complaints,
+        staff_list=staff_list,
+        student_list=student_list,
+    )
+
+
+@app.route('/staff_dashboard')
+def staff_dashboard():
+    if 'user_id' not in session or session['role'] != 'staff':
+        return redirect(url_for('login'))
+
+    complaints = Complaint.query.filter_by(assigned_to=session['user_id']).order_by(Complaint.created_at.desc()).all()
+    current_user = User.query.get_or_404(session['user_id'])
+    return render_template('staff_dashboard.html', complaints=complaints, current_user=current_user)
+
+
+@app.route('/staff/change-password', methods=['POST'])
+def change_staff_password():
+    if 'user_id' not in session or session.get('role') != 'staff':
+        flash('Only a logged-in staff member can change this password.', 'error')
+        return redirect(url_for('login'))
+
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    staff = User.query.get_or_404(session['user_id'])
+
+    if not check_password_hash(staff.password, current_password):
+        flash('The current password is incorrect.', 'error')
+        return redirect(url_for('staff_dashboard'))
+    if len(new_password) < 8:
+        flash('The new password must contain at least 8 characters.', 'error')
+        return redirect(url_for('staff_dashboard'))
+    if new_password != confirm_password:
+        flash('The new passwords do not match.', 'error')
+        return redirect(url_for('staff_dashboard'))
+
+    staff.password = generate_password_hash(new_password)
+    db.session.commit()
+    flash('Password changed successfully.', 'success')
+    return redirect(url_for('staff_dashboard'))
+
+
+@app.route('/submit_complaint', methods=['POST'])
+def submit_complaint():
+    if 'user_id' not in session or session['role'] != 'student':
+        flash('Please login first.', 'error')
+        return redirect(url_for('login'))
+
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', '').strip()
+    description = request.form.get('description', '').strip()
+    location_type = request.form.get('location_type', 'Hostel').strip()
+    campus_area = request.form.get('campus_area', 'Main Hostel').strip()
+    hostel_name = request.form.get('hostel_name', 'Main Hostel').strip()
+    block = request.form.get('block', 'A').strip()
+    room_number = request.form.get('room_number', '').strip()
+    priority = request.form.get('priority', 'Medium').strip()
+
+    college_categories = {
+        'Classroom', 'Laboratory', 'Library', 'Cafeteria', 'College Internet',
+        'Electrical', 'Cleaning', 'Security', 'Other College Issue',
+    }
+    hostel_categories = {
+        'Room Maintenance', 'Water Supply', 'Electrical', 'Hostel Cleaning',
+        'Hostel Internet', 'Security', 'Food & Dining', 'Other Hostel Issue',
+    }
+    valid_categories = college_categories if location_type == 'College' else hostel_categories
+
+    if location_type not in {'College', 'Hostel'}:
+        flash('Please select either a college or hostel location.', 'error')
+        return redirect(url_for('student_dashboard'))
+
+    if not title or not category or not description or not campus_area:
+        flash('Please complete the complaint details and location.', 'error')
+        return redirect(url_for('student_dashboard'))
+
+    if category not in valid_categories:
+        flash('Please select a category that matches the chosen location.', 'error')
+        return redirect(url_for('student_dashboard'))
+
+    uploaded_file = request.files.get('image')
+    image_filename = None
+    if uploaded_file and uploaded_file.filename:
+        filename = secure_filename(uploaded_file.filename)
+        uploaded_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        image_filename = filename
+
+    complaint = Complaint(
+        title=title,
+        description=description,
+        category=category,
+        location_type=location_type or 'Hostel',
+        campus_area=campus_area or 'Main Hostel',
+        hostel_name=hostel_name or 'Main Hostel',
+        block=block or 'A',
+        room_number=room_number,
+        priority=priority or 'Medium',
+        student_id=session['user_id'],
+        image_filename=image_filename,
+        status='Pending'
+    )
+    db.session.add(complaint)
+    db.session.commit()
+
+    flash('Complaint submitted successfully!', 'success')
+    return redirect(url_for('student_dashboard'))
+
+
+@app.route('/assign/<int:complaint_id>', methods=['POST'])
+def assign_complaint(complaint_id):
+    if 'user_id' not in session or session['role'] != 'admin':
+        return redirect(url_for('login'))
+
+    complaint = Complaint.query.get_or_404(complaint_id)
+    staff_id = request.form.get('staff_id')
+
+    if not staff_id:
+        flash('Please select a staff member to assign.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    complaint.assigned_to = int(staff_id)
+    complaint.status = 'Assigned'
+    db.session.commit()
+
+    flash('Complaint assigned successfully.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/update_status/<int:complaint_id>', methods=['POST'])
+def update_status(complaint_id):
+    if 'user_id' not in session or session['role'] != 'staff':
+        return redirect(url_for('login'))
+
+    complaint = Complaint.query.get_or_404(complaint_id)
+    if complaint.assigned_to != session['user_id']:
+        flash('You can only update complaints assigned to you.', 'error')
+        return redirect(url_for('staff_dashboard'))
+
+    new_status = request.form.get('status', complaint.status)
+    complaint.status = new_status
+    db.session.commit()
+
+    flash('Complaint status updated successfully.', 'success')
+    return redirect(url_for('staff_dashboard'))
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+if __name__ == '__main__':
+    app.run(debug=True)

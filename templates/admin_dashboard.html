@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Smart College Complaint System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="admin-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="sidebar-brand">
+                <span class="brand-badge">SCCS</span>
+                <div>
+                    <strong>Hostel Admin</strong>
+                    <small>Control center</small>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" aria-label="Admin sections">
+                <span class="sidebar-label">Workspace</span>
+                <button type="button" class="sidebar-link is-active" data-admin-panel="overview">
+                    <span class="sidebar-symbol">01</span>Overview
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="assignment">
+                    <span class="sidebar-symbol">02</span>Staff Assignment
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="staff-details">
+                    <span class="sidebar-symbol">03</span>Staff Account Details
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="student-details">
+                    <span class="sidebar-symbol">04</span>Student Account Details
+                </button>
+
+                <span class="sidebar-label">Administration</span>
+                <button type="button" class="sidebar-link" data-admin-panel="staff-account">
+                    <span class="sidebar-symbol">05</span>Create Staff Account
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="password">
+                    <span class="sidebar-symbol">06</span>Change Admin Password
+                </button>
+            </nav>
+
+            <a class="sidebar-logout" href="{{ url_for('logout') }}">Log out</a>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-mobile-header">
+                <strong>College & Hostel Admin</strong>
+                <button type="button" id="sidebarToggle" aria-expanded="false"
+                    aria-controls="adminSidebar">Menu</button>
+            </div>
+
+            <div class="dashboard-header">
+                <div>
+                    <span class="eyebrow">Operations center</span>
+                    <h2>College & Hostel Admin Dashboard</h2>
+                    <p>Monitor complaints, assign staff, and manage administrator access.</p>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert"
+                style="background-color: #d1fae5; color: #065f46; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <section class="admin-panel is-visible" data-admin-panel-content="overview">
+                <div class="hostel-stats">
+                    <div class="mini-stat">
+                        <span>Total Complaints</span>
+                        <strong>{{ complaints|length }}</strong>
+                    </div>
+                    <div class="mini-stat">
+                        <span>Pending</span>
+                        <strong>{{ complaints|selectattr('status', 'equalto', 'Pending')|list|length }}</strong>
+                    </div>
+                    <div class="mini-stat">
+                        <span>Assigned</span>
+                        <strong>{{ complaints|selectattr('status', 'equalto', 'Assigned')|list|length }}</strong>
+                    </div>
+                </div>
+                <div class="admin-welcome">
+                    <span class="eyebrow">At a glance</span>
+                    <h3>Keep every hostel request moving.</h3>
+                    <p>Use Staff Assignment to route complaints, or open Administration to manage staff access and your
+                        admin password.</p>
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="assignment" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Workspace</span>
+                    <h3>Staff Assignment</h3>
+                    <p>Assign each college or hostel complaint to the right maintenance staff member.</p>
+                </div>
+                <div class="complaint-list">
+                    {% if complaints %}
+                    {% for complaint in complaints %}
+                    <article class="complaint-card">
+                        <div class="complaint-card-title">
+                            <h3>{{ complaint.title }}</h3>
+                            <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
+                                }}</span>
+                        </div>
+                        <div class="complaint-meta">
+                            <p><strong>Student:</strong> {{ complaint.student.username }} | <strong>Category:</strong>
+                                {{ complaint.category }}</p>
+                            <p><strong>Location:</strong> {{ complaint.location_type }} | {{ complaint.campus_area }} |
+                                <strong>Block:</strong> {{ complaint.block }} | <strong>Room:</strong> {{
+                                complaint.room_number or 'N/A' }}
+                            </p>
+                            <p><strong>Priority:</strong> {{ complaint.priority }} | <strong>Date:</strong> {{
+                                complaint.created_at.strftime('%Y-%m-%d') }}</p>
+                        </div>
+                        <p>{{ complaint.description }}</p>
+                        {% if complaint.image_filename %}
+                        <img src="{{ url_for('static', filename='uploads/' + complaint.image_filename) }}"
+                            alt="Complaint evidence" class="complaint-image">
+                        {% endif %}
+                        <form action="{{ url_for('assign_complaint', complaint_id=complaint.id) }}" method="POST"
+                            class="assignment-form action-form">
+                            <select name="staff_id" required>
+                                <option value="" disabled {% if not complaint.assigned_to %}selected{% endif %}>Assign
+                                    to hostel staff</option>
+                                {% for staff in staff_list %}
+                                <option value="{{ staff.id }}" {% if complaint.assigned_to==staff.id %}selected{% endif
+                                    %}>{{ staff.username }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit">Assign Staff</button>
+                        </form>
+                    </article>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">No complaints found in the hostel system.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="staff-details" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Administration</span>
+                    <h3>Staff Account Details</h3>
+                    <p>View all staff accounts created for college and hostel operations.</p>
+                </div>
+                <div class="staff-directory">
+                    {% if staff_list %}
+                    {% for staff in staff_list %}
+                    <article class="staff-profile-card">
+                        <div class="staff-profile-heading">
+                            <div class="staff-avatar">{{ staff.username[:1]|upper }}</div>
+                            <div>
+                                <h3>{{ staff.full_name or staff.username }}</h3>
+                                <p>@{{ staff.username }}</p>
+                            </div>
+                            <span class="staff-status">Staff</span>
+                        </div>
+                        <div class="staff-profile-details">
+                            <span><strong>Email</strong>{{ staff.email or 'Not provided' }}</span>
+                            <span><strong>Assigned complaints</strong>{{ staff.assigned_complaints|length }}</span>
+                            <span><strong>Joined account</strong>{{ staff.id }}</span>
+                        </div>
+                        <form action="{{ url_for('delete_staff', staff_id=staff.id) }}" method="POST"
+                            class="delete-account-form delete-staff-form">
+                            <button type="submit" class="delete-staff-button">Delete Staff Account</button>
+                        </form>
+                    </article>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">No staff accounts have been created yet.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="student-details" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Administration</span>
+                    <h3>Student Account Details</h3>
+                    <p>{{ student_list|length }} student account(s) registered in the college and hostel system.</p>
+                </div>
+                <div class="staff-directory">
+                    {% if student_list %}
+                    {% for student in student_list %}
+                    <article class="staff-profile-card">
+                        <div class="staff-profile-heading">
+                            <div class="staff-avatar student-avatar">{{ (student.full_name or
+                                student.username)[:1]|upper }}</div>
+                            <div>
+                                <h3>{{ student.full_name or student.username }}</h3>
+                                <p>@{{ student.username }}</p>
+                            </div>
+                            <span class="staff-status student-status">Student</span>
+                        </div>
+                        <div class="staff-profile-details">
+                            <span><strong>Email</strong>{{ student.email or 'Not provided' }}</span>
+                            <span><strong>Location</strong>{{ student.hostel_name or 'College campus' }}</span>
+                            <span><strong>Complaint history</strong>{{ student.complaints|length }}</span>
+                        </div>
+                        <form action="{{ url_for('delete_student', student_id=student.id) }}" method="POST"
+                            class="delete-account-form delete-staff-form">
+                            <button type="submit" class="delete-staff-button">Delete Student Account</button>
+                        </form>
+                    </article>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">No student accounts have been created yet.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="staff-account" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Administration</span>
+                    <h3>Create Staff Account</h3>
+                    <p>Only the administrator can add hostel maintenance staff.</p>
+                </div>
+                <form action="{{ url_for('create_staff') }}" method="POST"
+                    class="management-form staff-form management-card">
+                    <input type="text" name="full_name" placeholder="Full name" required>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="email" name="email" placeholder="Email address">
+                    <input type="password" name="password" placeholder="Password" required>
+                    <input type="password" name="confirm_password" placeholder="Confirm password" required>
+                    <button type="submit">Create Staff</button>
+                </form>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="password" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Security Settings</span>
+                    <h3>Change Admin Password</h3>
+                    <p>Update the password for the current administrator account.</p>
+                </div>
+                <form action="{{ url_for('change_admin_password') }}" method="POST"
+                    class="management-form password-form management-card">
+                    <input type="password" name="current_password" placeholder="Current password" required>
+                    <input type="password" name="new_password" placeholder="New password (8+ characters)" minlength="8"
+                        required>
+                    <input type="password" name="confirm_password" placeholder="Confirm new password" minlength="8"
+                        required>
+                    <button type="submit">Update Password</button>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

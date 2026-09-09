@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Smart College Complaint System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="auth-page">
+    <div class="auth-shell">
+        <div class="auth-visual">
+            <div class="brand-badge">SCCS</div>
+            <h1>College & Hostel Complaint Hub</h1>
+            <p>Create an account to report problems across classrooms, campus facilities, and hostels.</p>
+            <div class="feature-list">
+                <span>Student support</span>
+                <span>Staff assignment</span>
+                <span>College tracking</span>
+            </div>
+            <div class="stat-card">
+                <strong>24/7</strong>
+                <span>Issue visibility across campus</span>
+            </div>
+        </div>
+
+        <div class="login-container">
+            <div class="login-header">
+                <span class="eyebrow">Create account</span>
+                <h2>Register</h2>
+                <p>Join the college support platform</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert">{{ message }}</div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form id="registerForm" action="/register" method="POST" class="auth-form">
+                <div class="field-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" placeholder="Enter your full name" required>
+                </div>
+
+                <div class="field-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Choose a username" required
+                        autocomplete="off">
+                </div>
+
+                <div class="field-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role" required>
+                        <option value="" disabled selected>Select role</option>
+                        <option value="student">Student</option>
+                    </select>
+                </div>
+
+                <div class="field-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="Enter email address">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <div class="field-group">
+                        <label for="hostel_name">Hostel</label>
+                        <input type="text" id="hostel_name" name="hostel_name" placeholder="Hostel name">
+                    </div>
+                    <div class="field-group">
+                        <label for="block">Block</label>
+                        <input type="text" id="block" name="block" placeholder="A / B / C">
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label for="room_number">Room Number</label>
+                    <input type="text" id="room_number" name="room_number" placeholder="Room number">
+                </div>
+
+                <div class="field-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Create password" required>
+                </div>
+
+                <div class="field-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm password"
+                        required>
+                </div>
+
+                <button type="submit" class="primary-btn">Create Account</button>
+            </form>
+
+            <p class="signup-link">Already have an account? <a href="/">Sign In</a></p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

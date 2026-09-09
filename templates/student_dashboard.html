@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal - Smart College Complaint System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="admin-layout student-layout">
+        <aside class="admin-sidebar" id="adminSidebar">
+            <div class="sidebar-brand">
+                <span class="brand-badge">SCCS</span>
+                <div>
+                    <strong>Student Portal</strong>
+                    <small>{{ current_user.username }}</small>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav" aria-label="Student sections">
+                <span class="sidebar-label">Workspace</span>
+                <button type="button" class="sidebar-link is-active" data-admin-panel="overview">
+                    <span class="sidebar-symbol">01</span>Overview
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="new-complaint">
+                    <span class="sidebar-symbol">02</span>New Complaint
+                </button>
+                <button type="button" class="sidebar-link" data-admin-panel="history">
+                    <span class="sidebar-symbol">03</span>Complaint History
+                </button>
+
+                <span class="sidebar-label">Account</span>
+                <button type="button" class="sidebar-link" data-admin-panel="password">
+                    <span class="sidebar-symbol">04</span>Change Password
+                </button>
+            </nav>
+
+            <a class="sidebar-logout" href="{{ url_for('logout') }}">Log out</a>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-mobile-header">
+                <strong>Student Portal</strong>
+                <button type="button" id="sidebarToggle" aria-expanded="false"
+                    aria-controls="adminSidebar">Menu</button>
+            </div>
+
+            <div class="dashboard-header">
+                <div>
+                    <span class="eyebrow">Hostel support</span>
+                    <h2>Welcome, {{ current_user.username }}</h2>
+                    <p>Report issues, follow progress, and manage your account.</p>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert"
+                style="background-color: #d1fae5; color: #065f46; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <section class="admin-panel is-visible" data-admin-panel-content="overview">
+                <div class="hostel-stats">
+                    <div class="mini-stat">
+                        <span>Total Requests</span>
+                        <strong>{{ complaints|length }}</strong>
+                    </div>
+                    <div class="mini-stat">
+                        <span>Pending</span>
+                        <strong>{{ complaints|selectattr('status', 'equalto', 'Pending')|list|length }}</strong>
+                    </div>
+                    <div class="mini-stat">
+                        <span>Resolved</span>
+                        <strong>{{ complaints|selectattr('status', 'equalto', 'Resolved')|list|length }}</strong>
+                    </div>
+                </div>
+                <div class="admin-welcome">
+                    <span class="eyebrow">Your support desk</span>
+                    <h3>Need help around college or hostel?</h3>
+                    <p>Open New Complaint to report an issue with a photo, or use Complaint History to follow requests
+                        already submitted.</p>
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="new-complaint" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Workspace</span>
+                    <h3>Register New Complaint</h3>
+                    <p>Give the maintenance team enough detail to resolve the issue quickly.</p>
+                </div>
+                <form action="{{ url_for('submit_complaint') }}" method="POST" enctype="multipart/form-data"
+                    class="management-card auth-form">
+                    <input type="text" name="title" placeholder="Complaint title (e.g. Water leakage)" required>
+                    <div class="form-grid-two">
+                        <select name="location_type" id="locationType" required>
+                            <option value="" disabled selected>Location type</option>
+                            <option value="College">College</option>
+                            <option value="Hostel">Hostel</option>
+                        </select>
+                        <select name="campus_area" required>
+                            <option value="" disabled selected>College / hostel area</option>
+                            <option value="Academic Block">Academic Block</option>
+                            <option value="Library">Library</option>
+                            <option value="Laboratory">Laboratory</option>
+                            <option value="Cafeteria">Cafeteria</option>
+                            <option value="Sports Complex">Sports Complex</option>
+                            <option value="Main Hostel">Main Hostel</option>
+                            <option value="Girls Hostel">Girls Hostel</option>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="International Hostel">International Hostel</option>
+                            <option value="Other Campus Area">Other Campus Area</option>
+                        </select>
+                    </div>
+                    <div class="form-grid-two">
+                        <select name="hostel_name">
+                            <option value="" selected>Hostel (if applicable)</option>
+                            <option value="Main Hostel">Main Hostel</option>
+                            <option value="Girls Hostel">Girls Hostel</option>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="International Hostel">International Hostel</option>
+                        </select>
+                        <select name="block">
+                            <option value="" selected>Block (if applicable)</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                        </select>
+                    </div>
+                    <div class="form-grid-two">
+                        <input type="text" name="room_number" placeholder="Room number (if applicable)">
+                        <select name="priority" required>
+                            <option value="" disabled selected>Priority</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <select name="category" id="collegeCategory" required disabled hidden>
+                        <option value="" disabled selected>College problem category</option>
+                        <option value="Classroom">Classroom</option>
+                        <option value="Laboratory">Laboratory</option>
+                        <option value="Library">Library</option>
+                        <option value="Cafeteria">Cafeteria</option>
+                        <option value="College Internet">College Internet</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Cleaning">Cleaning</option>
+                        <option value="Security">Campus Security</option>
+                        <option value="Other College Issue">Other College Issue</option>
+                    </select>
+                    <select name="category" id="hostelCategory" required disabled hidden>
+                        <option value="" disabled selected>Hostel problem category</option>
+                        <option value="Room Maintenance">Room Maintenance</option>
+                        <option value="Water Supply">Water Supply</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Cleaning">Hostel Cleaning</option>
+                        <option value="Internet">Hostel Internet</option>
+                        <option value="Security">Hostel Security</option>
+                        <option value="Food & Dining">Food & Dining</option>
+                        <option value="Other Hostel Issue">Other Hostel Issue</option>
+                    </select>
+                    <textarea name="description" rows="5" placeholder="Describe the problem in detail..."
+                        required></textarea>
+                    <div class="upload-box">
+                        <label for="complaintImage">Upload issue image</label>
+                        <input type="file" id="complaintImage" name="image" accept="image/*">
+                        <img id="imagePreview" alt="Complaint preview"
+                            style="display: none; width: 100%; max-height: 200px; object-fit: cover; border-radius: 10px; margin-top: 0.8rem;">
+                    </div>
+                    <button type="submit">Submit Complaint</button>
+                </form>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="history" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Workspace</span>
+                    <h3>Complaint History</h3>
+                    <p>Review the current status and details of your submitted requests.</p>
+                </div>
+                <div class="complaint-list">
+                    {% if complaints %}
+                    {% for complaint in complaints %}
+                    <article class="complaint-card">
+                        <div class="complaint-card-title">
+                            <h3>{{ complaint.title }}</h3>
+                            <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
+                                }}</span>
+                        </div>
+                        <p class="complaint-meta">{{ complaint.location_type }} | {{ complaint.campus_area }} | Block {{
+                            complaint.block }} | Room {{ complaint.room_number or 'N/A' }}</p>
+                        <p class="complaint-meta">Category: {{ complaint.category }} | Priority: {{ complaint.priority
+                            }} | Date: {{ complaint.created_at.strftime('%Y-%m-%d') }}</p>
+                        {% if complaint.image_filename %}
+                        <img src="{{ url_for('static', filename='uploads/' + complaint.image_filename) }}"
+                            alt="Complaint image" class="complaint-image">
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">You have not submitted any college or hostel complaints yet.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="admin-panel" data-admin-panel-content="password" hidden>
+                <div class="panel-heading">
+                    <span class="eyebrow">Account settings</span>
+                    <h3>Change Password</h3>
+                    <p>Use your current password to set a new secure password.</p>
+                </div>
+                <form action="{{ url_for('change_student_password') }}" method="POST"
+                    class="management-form password-form management-card">
+                    <input type="password" name="current_password" placeholder="Current password" required>
+                    <input type="password" name="new_password" placeholder="New password (8+ characters)" minlength="8"
+                        required>
+                    <input type="password" name="confirm_password" placeholder="Confirm new password" minlength="8"
+                        required>
+                    <button type="submit">Update Password</button>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>
