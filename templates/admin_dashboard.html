@@ -122,11 +122,12 @@
                         </div>
                         <p>{{ complaint.description }}</p>
                         {% if complaint.image_filename %}
-                        <img src="{{ url_for('static', filename='uploads/' + complaint.image_filename) }}"
-                            alt="Complaint evidence" class="complaint-image">
+                        <img src="{{ complaint_image_url(complaint.image_filename) }}" alt="Complaint evidence"
+                            class="complaint-image">
                         {% endif %}
                         <form action="{{ url_for('assign_complaint', complaint_id=complaint.id) }}" method="POST"
                             class="assignment-form action-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <select name="staff_id" required>
                                 <option value="" disabled {% if not complaint.assigned_to %}selected{% endif %}>Assign
                                     to hostel staff</option>
@@ -170,6 +171,7 @@
                         </div>
                         <form action="{{ url_for('delete_staff', staff_id=staff.id) }}" method="POST"
                             class="delete-account-form delete-staff-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="delete-staff-button">Delete Staff Account</button>
                         </form>
                     </article>
@@ -206,6 +208,7 @@
                         </div>
                         <form action="{{ url_for('delete_student', student_id=student.id) }}" method="POST"
                             class="delete-account-form delete-staff-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="delete-staff-button">Delete Student Account</button>
                         </form>
                     </article>
@@ -224,6 +227,7 @@
                 </div>
                 <form action="{{ url_for('create_staff') }}" method="POST"
                     class="management-form staff-form management-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="text" name="full_name" placeholder="Full name" required>
                     <input type="text" name="username" placeholder="Username" required>
                     <input type="email" name="email" placeholder="Email address">
@@ -241,6 +245,7 @@
                 </div>
                 <form action="{{ url_for('change_admin_password') }}" method="POST"
                     class="management-form password-form management-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="password" name="current_password" placeholder="Current password" required>
                     <input type="password" name="new_password" placeholder="New password (8+ characters)" minlength="8"
                         required>

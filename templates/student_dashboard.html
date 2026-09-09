@@ -97,6 +97,7 @@
                 </div>
                 <form action="{{ url_for('submit_complaint') }}" method="POST" enctype="multipart/form-data"
                     class="management-card auth-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="text" name="title" placeholder="Complaint title (e.g. Water leakage)" required>
                     <div class="form-grid-two">
                         <select name="location_type" id="locationType" required>
@@ -199,8 +200,8 @@
                         <p class="complaint-meta">Category: {{ complaint.category }} | Priority: {{ complaint.priority
                             }} | Date: {{ complaint.created_at.strftime('%Y-%m-%d') }}</p>
                         {% if complaint.image_filename %}
-                        <img src="{{ url_for('static', filename='uploads/' + complaint.image_filename) }}"
-                            alt="Complaint image" class="complaint-image">
+                        <img src="{{ complaint_image_url(complaint.image_filename) }}" alt="Complaint image"
+                            class="complaint-image">
                         {% endif %}
                     </article>
                     {% endfor %}
@@ -218,6 +219,7 @@
                 </div>
                 <form action="{{ url_for('change_student_password') }}" method="POST"
                     class="management-form password-form management-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="password" name="current_password" placeholder="Current password" required>
                     <input type="password" name="new_password" placeholder="New password (8+ characters)" minlength="8"
                         required>

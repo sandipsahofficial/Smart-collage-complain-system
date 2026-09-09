@@ -13,6 +13,12 @@ services:
           property: connectionString
       - key: PYTHON_VERSION
         value: 3.14.0
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
+      - key: S3_PREFIX
+        value: complaint-images
 
 databases:
   - name: smart-college-complaints-db

@@ -111,11 +111,12 @@
                         </div>
                         <p class="issue-description">{{ complaint.description }}</p>
                         {% if complaint.image_filename %}
-                        <img src="{{ url_for('static', filename='uploads/' + complaint.image_filename) }}"
-                            alt="Issue evidence" class="complaint-image">
+                        <img src="{{ complaint_image_url(complaint.image_filename) }}" alt="Issue evidence"
+                            class="complaint-image">
                         {% endif %}
                         <form action="{{ url_for('update_status', complaint_id=complaint.id) }}" method="POST"
                             class="assignment-form action-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <select name="status" required>
                                 <option value="Pending" {% if complaint.status=='Pending' %}selected{% endif %}>Pending
                                 </option>
@@ -142,6 +143,7 @@
                 </div>
                 <form action="{{ url_for('change_staff_password') }}" method="POST"
                     class="management-form password-form management-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="password" name="current_password" placeholder="Current password" required>
                     <input type="password" name="new_password" placeholder="New password (8+ characters)" minlength="8"
                         required>

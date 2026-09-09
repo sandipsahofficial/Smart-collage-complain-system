@@ -1,11 +1,14 @@
 import os
+import uuid
 
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_mail import Mail
+from flask_wtf.csrf import CSRFProtect
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
-from werkzeug.utils import secure_filename
+from werkzeug.datastructures import FileStorage
 
 from database import Complaint, Comment, User, db
 
@@ -14,6 +17,7 @@ load_dotenv()
 app = Flask(__name__)
 
 app.secret_key = os.getenv('SECRET_KEY', 'development-only-change-this-secret-key')
+app.config['WTF_CSRF_TIME_LIMIT'] = 3600
 database_url = os.getenv('DATABASE_URL', 'sqlite:///college.db')
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -23,6 +27,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['S3_BUCKET'] = os.getenv('S3_BUCKET')
+app.config['S3_REGION'] = os.getenv('S3_REGION', 'us-east-1')
+app.config['S3_PREFIX'] = os.getenv('S3_PREFIX', 'complaint-images')
 
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
@@ -30,6 +37,57 @@ app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'your_email@gmail.com'
 app.config['MAIL_PASSWORD'] = 'your_app_password'
 mail = Mail(app)
+csrf = CSRFProtect(app)
+
+
+def store_complaint_image(uploaded_file: FileStorage):
+    """Validate image bytes and store them locally or in S3 under a UUID key."""
+    try:
+        uploaded_file.stream.seek(0)
+        with Image.open(uploaded_file.stream) as image:
+            image.verify()
+            image_format = image.format
+    except (UnidentifiedImageError, OSError):
+        return None
+
+    extension_by_format = {'JPEG': 'jpg', 'PNG': 'png', 'GIF': 'gif', 'WEBP': 'webp'}
+    extension = extension_by_format.get(image_format)
+    if not extension:
+        return None
+
+    filename = f'{uuid.uuid4().hex}.{extension}'
+    uploaded_file.stream.seek(0)
+    if app.config['S3_BUCKET']:
+        import boto3
+
+        key = f"{app.config['S3_PREFIX'].strip('/')}/{filename}"
+        boto3.client('s3', region_name=app.config['S3_REGION']).upload_fileobj(
+            uploaded_file.stream,
+            app.config['S3_BUCKET'],
+            key,
+            ExtraArgs={'ContentType': f'image/{"jpeg" if extension == "jpg" else extension}'},
+        )
+        return key
+
+    uploaded_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    return filename
+
+
+def complaint_image_url(filename):
+    if app.config['S3_BUCKET']:
+        import boto3
+
+        return boto3.client('s3', region_name=app.config['S3_REGION']).generate_presigned_url(
+            'get_object',
+            Params={'Bucket': app.config['S3_BUCKET'], 'Key': filename},
+            ExpiresIn=900,
+        )
+    return url_for('static', filename=f'uploads/{filename}')
+
+
+@app.context_processor
+def inject_upload_helpers():
+    return {'complaint_image_url': complaint_image_url}
 
 db.init_app(app)
 
@@ -437,9 +495,10 @@ def submit_complaint():
     uploaded_file = request.files.get('image')
     image_filename = None
     if uploaded_file and uploaded_file.filename:
-        filename = secure_filename(uploaded_file.filename)
-        uploaded_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_filename = filename
+        image_filename = store_complaint_image(uploaded_file)
+        if not image_filename:
+            flash('Please upload a valid JPG, PNG, GIF, or WEBP image.', 'error')
+            return redirect(url_for('student_dashboard'))
 
     complaint = Complaint(
         title=title,
@@ -474,7 +533,12 @@ def assign_complaint(complaint_id):
         flash('Please select a staff member to assign.', 'error')
         return redirect(url_for('admin_dashboard'))
 
-    complaint.assigned_to = int(staff_id)
+    staff = User.query.filter_by(id=staff_id, role='staff').first()
+    if not staff:
+        flash('Please select a valid staff account.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    complaint.assigned_to = staff.id
     complaint.status = 'Assigned'
     db.session.commit()
 
@@ -493,6 +557,10 @@ def update_status(complaint_id):
         return redirect(url_for('staff_dashboard'))
 
     new_status = request.form.get('status', complaint.status)
+    if new_status not in {'Pending', 'In Progress', 'Resolved'}:
+        flash('Please select a valid complaint status.', 'error')
+        return redirect(url_for('staff_dashboard'))
+
     complaint.status = new_status
     db.session.commit()
 
