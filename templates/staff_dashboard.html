@@ -50,6 +50,11 @@
                     <h2>Welcome, {{ current_user.username }}</h2>
                     <p>Review assigned college and hostel issues and keep students informed.</p>
                 </div>
+                <button type="button" class="notification-toggle" aria-label="Open notifications"
+                    aria-controls="staffNotifications" aria-expanded="false">
+                    <span aria-hidden="true">&#128276;</span>
+                    {% if unread_notification_count %}<strong>{{ unread_notification_count }}</strong>{% endif %}
+                </button>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -62,6 +67,26 @@
             {% endfor %}
             {% endif %}
             {% endwith %}
+
+            <section class="notification-panel" id="staffNotifications" hidden>
+                <div class="panel-heading notification-heading">
+                    <div><span class="eyebrow">Updates</span>
+                        <h3>Notifications ({{ unread_notification_count }})</h3>
+                    </div>
+                    {% if unread_notification_count %}<form action="{{ url_for('mark_all_notifications_read') }}"
+                        method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button
+                            type="submit" class="secondary-btn">Mark all read</button></form>{% endif %}
+                </div>
+                {% if notifications %}<div class="notification-list">{% for notification in notifications %}<div
+                        class="notification-item {% if not notification.is_read %}is-unread{% endif %}">
+                        <div><strong>{{ notification.title }}</strong>
+                            <p>{{ notification.message }}</p>
+                        </div>{% if not notification.is_read %}<form
+                            action="{{ url_for('mark_notification_read', notification_id=notification.id) }}"
+                            method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button
+                                type="submit" class="notification-read">Read</button></form>{% endif %}
+                    </div>{% endfor %}</div>{% else %}<p class="empty-state">No notifications yet.</p>{% endif %}
+            </section>
 
             <section class="admin-panel is-visible" data-admin-panel-content="overview">
                 <div class="hostel-stats">
@@ -100,6 +125,7 @@
                             <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
                                 }}</span>
                         </div>
+                        <p class="ticket-number">{{ complaint.ticket_number }}</p>
                         <div class="complaint-meta">
                             <p><strong>Location:</strong> {{ complaint.location_type }} | {{ complaint.campus_area }} |
                                 <strong>Block:</strong> {{ complaint.block }} | <strong>Room:</strong> {{

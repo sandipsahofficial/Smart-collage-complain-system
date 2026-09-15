@@ -1,23 +1,33 @@
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, request, session, url_for
-from flask_mail import Mail
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.datastructures import FileStorage
 
-from database import Complaint, Comment, User, db
+from database import Complaint, Comment, Notification, User, db
 
 load_dotenv()
 
 app = Flask(__name__)
 
-app.secret_key = os.getenv('SECRET_KEY', 'development-only-change-this-secret-key')
+app_environment = os.getenv('APP_ENV', 'development').lower()
+secret_key = os.getenv('SECRET_KEY')
+if app_environment == 'production' and not secret_key:
+    raise RuntimeError('SECRET_KEY must be configured in production.')
+app.config['SECRET_KEY'] = secret_key or 'development-only-change-this-secret-key'
 app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+app.config['SESSION_COOKIE_SECURE'] = app_environment == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['RATELIMIT_ENABLED'] = os.getenv('RATELIMIT_ENABLED', 'true').lower() == 'true'
 database_url = os.getenv('DATABASE_URL', 'sqlite:///college.db')
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -31,13 +41,97 @@ app.config['S3_BUCKET'] = os.getenv('S3_BUCKET')
 app.config['S3_REGION'] = os.getenv('S3_REGION', 'us-east-1')
 app.config['S3_PREFIX'] = os.getenv('S3_PREFIX', 'complaint-images')
 
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your_email@gmail.com'
-app.config['MAIL_PASSWORD'] = 'your_app_password'
-mail = Mail(app)
 csrf = CSRFProtect(app)
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri=os.getenv('RATELIMIT_STORAGE_URI', 'memory://'),
+)
+
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
+COLLEGE_CATEGORIES = {
+    'Classroom', 'Laboratory', 'Library', 'Cafeteria', 'College Internet',
+    'Electrical', 'Cleaning', 'Security', 'Other College Issue',
+}
+HOSTEL_CATEGORIES = {
+    'Room Maintenance', 'Water Supply', 'Electrical', 'Hostel Cleaning',
+    'Hostel Internet', 'Security', 'Food & Dining', 'Other Hostel Issue',
+}
+VALID_PRIORITIES = {'Low', 'Medium', 'High', 'Urgent'}
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def ensure_default_admin():
+    admin = User.query.filter_by(username='admin').first()
+    if admin is None:
+        db.session.add(User(
+            username='admin',
+            password=generate_password_hash('admin123'),
+            role='admin',
+            full_name='Hostel Administrator',
+            email='admin@college.edu',
+            phone='9000000001',
+            hostel_name='Main Hostel'
+        ))
+        db.session.commit()
+        return
+
+    if admin.role != 'admin':
+        admin.role = 'admin'
+        admin.full_name = admin.full_name or 'Hostel Administrator'
+        admin.email = admin.email or 'admin@college.edu'
+        admin.phone = admin.phone or '9000000001'
+        admin.hostel_name = admin.hostel_name or 'Main Hostel'
+        db.session.commit()
+
+
+def seed_demo_data():
+    default_seed_value = 'false' if app_environment == 'production' else 'true'
+    should_seed_demo_data = os.getenv('SEED_DEMO_DATA', default_seed_value).lower() == 'true'
+
+    ensure_default_admin()
+
+    if not should_seed_demo_data:
+        return
+
+    demo_staff = User.query.filter_by(username='staff').first()
+    if demo_staff is None:
+        db.session.add(User(
+            username='staff',
+            password=generate_password_hash('staff123'),
+            role='staff',
+            full_name='Maintenance Staff',
+            email='staff@college.edu',
+            phone='9000000002',
+            hostel_name='Main Hostel'
+        ))
+
+    demo_student = User.query.filter_by(username='student').first()
+    if demo_student is None:
+        db.session.add(User(
+            username='student',
+            password=generate_password_hash('student123'),
+            role='student',
+            full_name='Student User',
+            email='student@college.edu',
+            phone='9000000003',
+            hostel_name='Main Hostel',
+            block='A',
+            room_number='101'
+        ))
+    db.session.commit()
+
+
+def enforce_single_admin():
+    admin_accounts = User.query.filter_by(role='admin').order_by(User.id).all()
+    for extra_admin in admin_accounts[1:]:
+        extra_admin.role = 'staff'
+    db.session.commit()
 
 
 def store_complaint_image(uploaded_file: FileStorage):
@@ -89,6 +183,69 @@ def complaint_image_url(filename):
 def inject_upload_helpers():
     return {'complaint_image_url': complaint_image_url}
 
+
+@app.context_processor
+def inject_notifications():
+    if 'user_id' not in session:
+        return {'notifications': [], 'unread_notification_count': 0}
+    user_notifications = Notification.query.filter_by(
+        recipient_id=session['user_id']
+    ).order_by(Notification.created_at.desc()).limit(20).all()
+    unread_count = Notification.query.filter_by(
+        recipient_id=session['user_id'], is_read=False
+    ).count()
+    return {
+        'notifications': user_notifications,
+        'unread_notification_count': unread_count,
+    }
+
+
+def create_notification(recipient_id, title, message, complaint=None):
+    db.session.add(Notification(
+        recipient_id=recipient_id,
+        complaint_id=complaint.id if complaint else None,
+        title=title,
+        message=message,
+    ))
+
+
+def notify_admins(title, message, complaint):
+    for admin in User.query.filter_by(role='admin').all():
+        create_notification(admin.id, title, message, complaint)
+
+
+def ticket_number_for(complaint):
+    return f'SCCS-{complaint.created_at.year}-{complaint.id:06d}'
+
+
+def authenticate_user(user, password):
+    if not user:
+        return False
+
+    now = utc_now()
+    if user.locked_until:
+        locked_until = user.locked_until
+        if locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        if locked_until > now:
+            return False
+        user.failed_login_attempts = 0
+        user.locked_until = None
+
+    if user.password == password or check_password_hash(user.password, password):
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        if user.password == password and not user.password.startswith('pbkdf2:'):
+            user.password = generate_password_hash(password)
+        db.session.commit()
+        return True
+
+    user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+    if user.failed_login_attempts >= LOGIN_MAX_ATTEMPTS:
+        user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+    db.session.commit()
+    return False
+
 db.init_app(app)
 
 
@@ -97,6 +254,8 @@ def migrate_sqlite_schema():
     inspector = inspect(db.engine)
     migrations = {
         'user': {
+            'failed_login_attempts': 'INTEGER DEFAULT 0',
+            'locked_until': 'DATETIME',
             'full_name': 'VARCHAR(120)',
             'phone': 'VARCHAR(30)',
             'hostel_name': 'VARCHAR(80)',
@@ -104,6 +263,7 @@ def migrate_sqlite_schema():
             'room_number': 'VARCHAR(20)',
         },
         'complaint': {
+            'ticket_number': 'VARCHAR(30)',
             'location_type': "VARCHAR(30) DEFAULT 'Hostel'",
             'campus_area': "VARCHAR(100) DEFAULT 'Main Hostel'",
             'hostel_name': "VARCHAR(80) DEFAULT 'Main Hostel'",
@@ -125,64 +285,20 @@ def migrate_sqlite_schema():
                 )
     db.session.commit()
 
+    for complaint in Complaint.query.filter_by(ticket_number=None).all():
+        complaint.ticket_number = ticket_number_for(complaint)
+    db.session.commit()
+
 
 with app.app_context():
     db.create_all()
     migrate_sqlite_schema()
-
-    demo_admin = User.query.filter_by(username='admin').first()
-    if demo_admin is None:
-        db.session.add(User(
-            username='admin',
-            password=generate_password_hash('admin123'),
-            role='admin',
-            full_name='Hostel Administrator',
-            email='admin@college.edu',
-            phone='9000000001',
-            hostel_name='Main Hostel'
-        ))
-    elif demo_admin.phone == '9000000001':
-        demo_admin.phone = '+919000000001'
-
-    demo_staff = User.query.filter_by(username='staff').first()
-    if demo_staff is None:
-        db.session.add(User(
-            username='staff',
-            password=generate_password_hash('staff123'),
-            role='staff',
-            full_name='Maintenance Staff',
-            email='staff@college.edu',
-            phone='9000000002',
-            hostel_name='Main Hostel'
-        ))
-    elif demo_staff.phone == '9000000002':
-        demo_staff.phone = '+919000000002'
-
-    demo_student = User.query.filter_by(username='student').first()
-    if demo_student is None:
-        db.session.add(User(
-            username='student',
-            password=generate_password_hash('student123'),
-            role='student',
-            full_name='Student User',
-            email='student@college.edu',
-            phone='9000000003',
-            hostel_name='Main Hostel',
-            block='A',
-            room_number='101'
-        ))
-    elif demo_student.phone == '9000000003':
-        demo_student.phone = '+919000000003'
-
-    db.session.commit()
-
-    admin_accounts = User.query.filter_by(role='admin').order_by(User.id).all()
-    for extra_admin in admin_accounts[1:]:
-        extra_admin.role = 'staff'
-    db.session.commit()
+    seed_demo_data()
+    enforce_single_admin()
 
 
 @app.route('/', methods=['GET', 'POST'])
+@limiter.limit('10 per minute', methods=['POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -190,11 +306,7 @@ def login():
 
         user = User.query.filter_by(username=username).first()
 
-        if user and (user.password == password or check_password_hash(user.password, password)):
-            if user.password == password and not user.password.startswith('pbkdf2:'):
-                user.password = generate_password_hash(password)
-                db.session.commit()
-
+        if authenticate_user(user, password):
             session['user_id'] = user.id
             session['username'] = user.username
             session['role'] = user.role
@@ -211,7 +323,28 @@ def login():
     return render_template('login.html')
 
 
+@app.route('/admin/login', methods=['GET', 'POST'])
+@limiter.limit('10 per minute', methods=['POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+
+        user = User.query.filter_by(username=username, role='admin').first()
+        if authenticate_user(user, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['role'] = user.role
+            return redirect(url_for('admin_dashboard'))
+
+        flash('Invalid admin username or password!', 'error')
+        return redirect(url_for('admin_login'))
+
+    return render_template('admin_login.html')
+
+
 @app.route('/register', methods=['GET', 'POST'])
+@limiter.limit('5 per minute', methods=['POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -261,6 +394,7 @@ def register():
 
 
 @app.route('/admin/change-password', methods=['POST'])
+@limiter.limit('5 per hour', methods=['POST'])
 def change_admin_password():
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Only the logged-in administrator can change this password.', 'error')
@@ -375,6 +509,7 @@ def student_dashboard():
 
 
 @app.route('/student/change-password', methods=['POST'])
+@limiter.limit('5 per hour', methods=['POST'])
 def change_student_password():
     if 'user_id' not in session or session.get('role') != 'student':
         flash('Only a logged-in student can change this password.', 'error')
@@ -428,6 +563,7 @@ def staff_dashboard():
 
 
 @app.route('/staff/change-password', methods=['POST'])
+@limiter.limit('5 per hour', methods=['POST'])
 def change_staff_password():
     if 'user_id' not in session or session.get('role') != 'staff':
         flash('Only a logged-in staff member can change this password.', 'error')
@@ -455,6 +591,7 @@ def change_staff_password():
 
 
 @app.route('/submit_complaint', methods=['POST'])
+@limiter.limit('10 per hour', methods=['POST'])
 def submit_complaint():
     if 'user_id' not in session or session['role'] != 'student':
         flash('Please login first.', 'error')
@@ -470,15 +607,7 @@ def submit_complaint():
     room_number = request.form.get('room_number', '').strip()
     priority = request.form.get('priority', 'Medium').strip()
 
-    college_categories = {
-        'Classroom', 'Laboratory', 'Library', 'Cafeteria', 'College Internet',
-        'Electrical', 'Cleaning', 'Security', 'Other College Issue',
-    }
-    hostel_categories = {
-        'Room Maintenance', 'Water Supply', 'Electrical', 'Hostel Cleaning',
-        'Hostel Internet', 'Security', 'Food & Dining', 'Other Hostel Issue',
-    }
-    valid_categories = college_categories if location_type == 'College' else hostel_categories
+    valid_categories = COLLEGE_CATEGORIES if location_type == 'College' else HOSTEL_CATEGORIES
 
     if location_type not in {'College', 'Hostel'}:
         flash('Please select either a college or hostel location.', 'error')
@@ -490,6 +619,10 @@ def submit_complaint():
 
     if category not in valid_categories:
         flash('Please select a category that matches the chosen location.', 'error')
+        return redirect(url_for('student_dashboard'))
+
+    if priority not in VALID_PRIORITIES:
+        flash('Please select a valid priority.', 'error')
         return redirect(url_for('student_dashboard'))
 
     uploaded_file = request.files.get('image')
@@ -516,8 +649,15 @@ def submit_complaint():
     )
     db.session.add(complaint)
     db.session.commit()
+    complaint.ticket_number = ticket_number_for(complaint)
+    notify_admins(
+        'New complaint received',
+        f'{complaint.ticket_number}: {complaint.title}',
+        complaint,
+    )
+    db.session.commit()
 
-    flash('Complaint submitted successfully!', 'success')
+    flash(f'Complaint submitted successfully. Ticket: {complaint.ticket_number}', 'success')
     return redirect(url_for('student_dashboard'))
 
 
@@ -538,8 +678,28 @@ def assign_complaint(complaint_id):
         flash('Please select a valid staff account.', 'error')
         return redirect(url_for('admin_dashboard'))
 
+    previous_staff_id = complaint.assigned_to
     complaint.assigned_to = staff.id
     complaint.status = 'Assigned'
+    create_notification(
+        staff.id,
+        'Complaint assigned to you',
+        f'{complaint.ticket_number}: {complaint.title}',
+        complaint,
+    )
+    create_notification(
+        complaint.student_id,
+        'Complaint assigned',
+        f'{complaint.ticket_number} is assigned to {staff.full_name or staff.username}.',
+        complaint,
+    )
+    if previous_staff_id and previous_staff_id != staff.id:
+        create_notification(
+            previous_staff_id,
+            'Complaint reassigned',
+            f'{complaint.ticket_number} has been reassigned.',
+            complaint,
+        )
     db.session.commit()
 
     flash('Complaint assigned successfully.', 'success')
@@ -562,16 +722,56 @@ def update_status(complaint_id):
         return redirect(url_for('staff_dashboard'))
 
     complaint.status = new_status
+    create_notification(
+        complaint.student_id,
+        'Complaint status updated',
+        f'{complaint.ticket_number} is now {new_status}.',
+        complaint,
+    )
+    notify_admins(
+        'Complaint status updated',
+        f'{complaint.ticket_number} is now {new_status}.',
+        complaint,
+    )
     db.session.commit()
 
     flash('Complaint status updated successfully.', 'success')
     return redirect(url_for('staff_dashboard'))
 
 
+@app.route('/notifications/read/<int:notification_id>', methods=['POST'])
+def mark_notification_read(notification_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    notification = Notification.query.filter_by(
+        id=notification_id,
+        recipient_id=session['user_id'],
+    ).first_or_404()
+    notification.is_read = True
+    db.session.commit()
+    return redirect(request.referrer or url_for('login'))
+
+
+@app.route('/notifications/read-all', methods=['POST'])
+def mark_all_notifications_read():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    Notification.query.filter_by(
+        recipient_id=session['user_id'], is_read=False
+    ).update({'is_read': True}, synchronize_session=False)
+    db.session.commit()
+    return redirect(request.referrer or url_for('login'))
+
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/health')
+def health():
+    return {'status': 'healthy'}, 200
 
 
 if __name__ == '__main__':

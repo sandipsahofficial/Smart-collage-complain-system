@@ -342,6 +342,43 @@ button:hover {
     color: #64748b;
 }
 
+.notification-toggle {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border: 1px solid #cbd5e1;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #164e63;
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+.notification-toggle:hover,
+.notification-toggle:focus-visible {
+    background: #ecfdf5;
+    outline: 2px solid #0f766e;
+    outline-offset: 2px;
+}
+
+.notification-toggle strong {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    display: grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 0.7rem;
+}
+
 .admin-layout {
     display: grid;
     grid-template-columns: 245px minmax(0, 1fr);
@@ -903,4 +940,71 @@ button:hover {
         width: auto;
         padding: 0.55rem 0.85rem;
     }
+}
+
+.notification-panel {
+    margin-bottom: 1.5rem;
+    padding: 1.2rem;
+    background: #ffffff;
+    border: 1px solid #dbe4ee;
+    border-radius: 8px;
+}
+
+.notification-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.notification-heading h3 {
+    margin-bottom: 0;
+}
+
+.notification-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 0.9rem;
+    border-left: 3px solid transparent;
+    background: #f8fafc;
+}
+
+.notification-item.is-unread {
+    border-left-color: #0f766e;
+    background: #ecfdf5;
+}
+
+.notification-item strong {
+    display: block;
+}
+
+.notification-item p {
+    margin: 0.25rem 0 0;
+    color: #475569;
+}
+
+.notification-read,
+.secondary-btn {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #164e63;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ticket-number {
+    margin: 0.35rem 0;
+    color: #0f766e;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }

@@ -53,6 +53,11 @@
                     <h2>Welcome, {{ current_user.username }}</h2>
                     <p>Report issues, follow progress, and manage your account.</p>
                 </div>
+                <button type="button" class="notification-toggle" aria-label="Open notifications"
+                    aria-controls="studentNotifications" aria-expanded="false">
+                    <span aria-hidden="true">&#128276;</span>
+                    {% if unread_notification_count %}<strong>{{ unread_notification_count }}</strong>{% endif %}
+                </button>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -65,6 +70,39 @@
             {% endfor %}
             {% endif %}
             {% endwith %}
+
+            <section class="notification-panel" id="studentNotifications" hidden>
+                <div class="panel-heading notification-heading">
+                    <div>
+                        <span class="eyebrow">Updates</span>
+                        <h3>Notifications ({{ unread_notification_count }})</h3>
+                    </div>
+                    {% if unread_notification_count %}
+                    <form action="{{ url_for('mark_all_notifications_read') }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="secondary-btn">Mark all read</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if notifications %}
+                <div class="notification-list">
+                    {% for notification in notifications %}
+                    <div class="notification-item {% if not notification.is_read %}is-unread{% endif %}">
+                        <div><strong>{{ notification.title }}</strong>
+                            <p>{{ notification.message }}</p>
+                        </div>
+                        {% if not notification.is_read %}
+                        <form action="{{ url_for('mark_notification_read', notification_id=notification.id) }}"
+                            method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="notification-read">Read</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}<p class="empty-state">No notifications yet.</p>{% endif %}
+            </section>
 
             <section class="admin-panel is-visible" data-admin-panel-content="overview">
                 <div class="hostel-stats">
@@ -162,8 +200,8 @@
                         <option value="Room Maintenance">Room Maintenance</option>
                         <option value="Water Supply">Water Supply</option>
                         <option value="Electrical">Electrical</option>
-                        <option value="Cleaning">Hostel Cleaning</option>
-                        <option value="Internet">Hostel Internet</option>
+                        <option value="Hostel Cleaning">Hostel Cleaning</option>
+                        <option value="Hostel Internet">Hostel Internet</option>
                         <option value="Security">Hostel Security</option>
                         <option value="Food & Dining">Food & Dining</option>
                         <option value="Other Hostel Issue">Other Hostel Issue</option>
@@ -195,6 +233,7 @@
                             <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
                                 }}</span>
                         </div>
+                        <p class="ticket-number">{{ complaint.ticket_number }}</p>
                         <p class="complaint-meta">{{ complaint.location_type }} | {{ complaint.campus_area }} | Block {{
                             complaint.block }} | Room {{ complaint.room_number or 'N/A' }}</p>
                         <p class="complaint-meta">Category: {{ complaint.category }} | Priority: {{ complaint.priority

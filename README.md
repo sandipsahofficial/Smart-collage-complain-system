@@ -5,11 +5,19 @@ Flask-based complaint management for college and hostel operations.
 ## Local Setup
 
 ```powershell
-\.venv\Scripts\python.exe -m pip install -r requirements.txt
-\.venv\Scripts\python.exe app.py
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py
 ```
 
 Open `http://127.0.0.1:5000`.
+
+The admin login is available at `http://127.0.0.1:5000/admin/login`.
+
+For production, set `APP_ENV=production` and provide a strong `SECRET_KEY`.
+Demo staff and student accounts are enabled by default only for local development;
+set `SEED_DEMO_DATA=false` explicitly in production.
+
+The deployment health check is available at `http://127.0.0.1:5000/health`.
 
 ## Production Configuration
 
@@ -28,7 +36,7 @@ Without `S3_BUCKET`, local development stores validated images in `static/upload
 ## Tests
 
 ```powershell
-\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 The suite covers CSRF rejection, route health, upload signature validation, UUID filenames, and staff assignment authorization.

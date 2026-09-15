@@ -119,4 +119,32 @@ document.addEventListener("DOMContentLoaded", () => {
             sidebarToggle.setAttribute('aria-expanded', String(isOpen));
         });
     }
+
+    const notificationToggle = document.querySelector('.notification-toggle');
+    const notificationPanel = document.querySelector('.notification-panel');
+    if (notificationToggle && notificationPanel) {
+        const closeNotifications = () => {
+            notificationPanel.hidden = true;
+            notificationToggle.setAttribute('aria-expanded', 'false');
+        };
+
+        notificationToggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const isOpen = notificationToggle.getAttribute('aria-expanded') === 'true';
+            notificationPanel.hidden = isOpen;
+            notificationToggle.setAttribute('aria-expanded', String(!isOpen));
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!notificationPanel.contains(event.target) && event.target !== notificationToggle) {
+                closeNotifications();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeNotifications();
+            }
+        });
+    }
 });
