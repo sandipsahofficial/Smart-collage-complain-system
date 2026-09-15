@@ -40,3 +40,11 @@ Without `S3_BUCKET`, local development stores validated images in `static/upload
 ```
 
 The suite covers CSRF rejection, route health, upload signature validation, UUID filenames, and staff assignment authorization.
+
+## Optional AI assistance
+
+The optional AI layer is disabled by default and never required for the core complaint workflow. Set `AI_ENABLED=true` to enable it. Use `AI_PROVIDER=local` for offline analysis or `AI_PROVIDER=openai` with `OPENAI_API_KEY` and `AI_MODEL` for the real OpenAI Responses API. Suggestions are stored for audit and remain subject to human review.
+
+Supported settings include `AI_PROVIDER=local`, `RELATED_THRESHOLD=0.65`, `DUPLICATE_THRESHOLD=0.80`, and `AI_EXTERNAL_DATA_ALLOWED=false`. The current implementation makes no external API calls; external data sharing remains disabled by default.
+
+See [docs/AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md), [docs/AI_CONFIGURATION.md](docs/AI_CONFIGURATION.md), and [docs/AI_PRIVACY.md](docs/AI_PRIVACY.md).

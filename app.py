@@ -1,5 +1,8 @@
 import os
+import hashlib
+import json
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -12,7 +15,10 @@ from sqlalchemy import inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.datastructures import FileStorage
 
-from database import Complaint, Comment, Notification, User, db
+from ai import AIService
+from ai.query import answer_question
+from database import AIAnalysis, Complaint, Comment, ComplaintSimilarity, Notification, User, db
+from ai.summarizer import summarize
 
 load_dotenv()
 
@@ -40,6 +46,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['S3_BUCKET'] = os.getenv('S3_BUCKET')
 app.config['S3_REGION'] = os.getenv('S3_REGION', 'us-east-1')
 app.config['S3_PREFIX'] = os.getenv('S3_PREFIX', 'complaint-images')
+ai_service = AIService()
 
 csrf = CSRFProtect(app)
 limiter = Limiter(
@@ -200,6 +207,20 @@ def inject_notifications():
     }
 
 
+@app.context_processor
+def inject_ai_status():
+    if 'user_id' not in session:
+        return {'ai_status': ai_service.status(), 'ai_suggestions': []}
+
+    query = Complaint.query.order_by(Complaint.created_at.desc())
+    if session.get('role') == 'student':
+        query = query.filter_by(student_id=session['user_id'])
+    elif session.get('role') == 'staff':
+        query = query.filter_by(assigned_to=session['user_id'])
+    suggestions = query.filter(Complaint.ai_category.isnot(None)).limit(5).all()
+    return {'ai_status': ai_service.status(), 'ai_suggestions': suggestions}
+
+
 def create_notification(recipient_id, title, message, complaint=None):
     db.session.add(Notification(
         recipient_id=recipient_id,
@@ -273,6 +294,12 @@ def migrate_sqlite_schema():
             'image_filename': 'VARCHAR(255)',
             'rating': 'INTEGER',
             'feedback_text': 'TEXT',
+            'ai_category': 'VARCHAR(80)',
+            'ai_department': 'VARCHAR(80)',
+            'ai_priority': 'VARCHAR(20)',
+            'ai_confidence': 'FLOAT',
+            'ai_reasons': 'TEXT',
+            'ai_safety_critical': 'BOOLEAN DEFAULT 0',
         },
     }
 
@@ -491,6 +518,11 @@ def delete_student(student_id):
     student_complaints = Complaint.query.filter_by(student_id=student.id).all()
     for complaint in student_complaints:
         Comment.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        AIAnalysis.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        ComplaintSimilarity.query.filter(
+            (ComplaintSimilarity.complaint_id == complaint.id)
+            | (ComplaintSimilarity.related_complaint_id == complaint.id)
+        ).delete(synchronize_session=False)
         db.session.delete(complaint)
     db.session.delete(student)
     db.session.commit()
@@ -549,7 +581,39 @@ def admin_dashboard():
         complaints=complaints,
         staff_list=staff_list,
         student_list=student_list,
+        insights=summarize(complaints),
     )
+
+
+@app.route('/admin/ai-query', methods=['POST'])
+@limiter.limit('30 per minute', methods=['POST'])
+def admin_ai_query():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return {'error': 'Admin access required.'}, 403
+    question = request.form.get('question', '').strip()
+    if not question or len(question) > 300:
+        return {'error': 'Please enter a question up to 300 characters.'}, 400
+    complaints = Complaint.query.order_by(Complaint.created_at.desc()).all()
+    fallback_result = answer_question(question, complaints)
+    context = {
+        'total_complaints': len(complaints),
+        'urgent_complaints': sum(item.priority == 'Urgent' for item in complaints),
+        'open_complaints': sum(item.status not in {'Resolved', 'Closed'} for item in complaints),
+        'resolved_complaints': sum(item.status == 'Resolved' for item in complaints),
+        'categories': dict(Counter(item.category for item in complaints)),
+        'areas': dict(Counter(item.campus_area for item in complaints)),
+    }
+    fallback_result['answer'] = ai_service.answer_admin_question(
+        question, context, fallback_result['answer']
+    )
+    return fallback_result
+
+
+@app.route('/admin/ai/status')
+def admin_ai_status():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return {'error': 'Admin access required.'}, 403
+    return ai_service.status_details()
 
 
 @app.route('/staff_dashboard')
@@ -655,6 +719,37 @@ def submit_complaint():
         f'{complaint.ticket_number}: {complaint.title}',
         complaint,
     )
+    analysis = ai_service.analyze_complaint(title, description, location_type, campus_area)
+    if analysis:
+        complaint.ai_category = analysis.category
+        complaint.ai_department = analysis.department
+        complaint.ai_priority = analysis.priority
+        complaint.ai_confidence = analysis.confidence
+        complaint.ai_reasons = json.dumps(analysis.reasons)
+        complaint.ai_safety_critical = analysis.safety_critical
+        input_hash = hashlib.sha256(
+            f'{title}|{description}|{location_type}'.encode()
+        ).hexdigest()
+        db.session.add(AIAnalysis(
+            complaint_id=complaint.id,
+            analysis_type='complaint_analysis',
+            input_hash=input_hash,
+            prediction=json.dumps(analysis.as_dict()),
+            confidence=analysis.confidence,
+            reason='; '.join(analysis.reasons),
+        ))
+        related = ai_service.related_complaints(
+            title,
+            description,
+            Complaint.query.filter(Complaint.id != complaint.id).all(),
+        )
+        for item in related:
+            db.session.add(ComplaintSimilarity(
+                complaint_id=complaint.id,
+                related_complaint_id=item.complaint_id,
+                similarity_score=item.similarity,
+                relationship='related',
+            ))
     db.session.commit()
 
     flash(f'Complaint submitted successfully. Ticket: {complaint.ticket_number}', 'success')

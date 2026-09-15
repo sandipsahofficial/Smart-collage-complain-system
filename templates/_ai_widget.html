@@ -1,0 +1,45 @@
+<button type="button" class="ai-float-button" id="aiWidgetToggle" aria-label="Open AI assistance"
+    aria-controls="aiWidgetPanel" aria-expanded="false">
+    <span aria-hidden="true">AI</span>
+</button>
+
+<aside class="ai-widget-panel" id="aiWidgetPanel" hidden aria-label="AI assistance">
+    <div class="ai-widget-header">
+        <div>
+            <span class="eyebrow">Smart assistance</span>
+            <h3>AI Insights</h3>
+        </div>
+        <button type="button" class="ai-widget-close" id="aiWidgetClose"
+            aria-label="Close AI assistance">&times;</button>
+    </div>
+    <p class="ai-widget-status">{{ ai_status }}</p>
+    {% if session.get('role') == 'admin' %}
+    <form id="aiQueryForm" class="ai-query-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="aiQuestion">Ask about complaints</label>
+        <div class="ai-query-controls">
+            <input id="aiQuestion" name="question" maxlength="300" placeholder="e.g. How many urgent complaints?"
+                required>
+            <button type="submit">Ask</button>
+        </div>
+        <p id="aiQueryResult" class="ai-query-result" aria-live="polite">Ask a verified question about your complaint
+            data.</p>
+    </form>
+    {% endif %}
+    {% if ai_status == 'AI disabled' %}
+    <p class="empty-state">AI assistance is disabled. The complaint system continues to work normally.</p>
+    {% elif ai_suggestions %}
+    <div class="ai-suggestion-list">
+        {% for complaint in ai_suggestions %}
+        <article class="ai-suggestion-item">
+            <strong>{{ complaint.ticket_number or ('Complaint #' ~ complaint.id) }}</strong>
+            <span>{{ complaint.ai_category }} · {{ complaint.ai_department }}</span>
+            <span>AI priority: {{ complaint.ai_priority }} ({{ (complaint.ai_confidence * 100)|round|int }}%)</span>
+            {% if complaint.ai_safety_critical %}<b class="ai-safety-flag">Safety review needed</b>{% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No AI suggestions are available yet.</p>
+    {% endif %}
+</aside>

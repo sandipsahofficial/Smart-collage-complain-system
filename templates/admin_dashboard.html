@@ -97,6 +97,23 @@
                     </div>{% endfor %}</div>{% else %}<p class="empty-state">No notifications yet.</p>{% endif %}
             </section>
 
+            <section class="ai-insights-panel">
+                <div class="panel-heading ai-heading">
+                    <div><span class="eyebrow">AI Insights</span>
+                        <h3>{{ ai_status }}</h3>
+                    </div>
+                    <span class="ai-disclaimer">Suggestions require human review</span>
+                </div>
+                <div class="ai-insights-grid">
+                    <div><strong>{{ insights.total }}</strong><span>Total analyzed</span></div>
+                    <div><strong>{{ insights.open_count }}</strong><span>Open complaints</span></div>
+                    <div><strong>{{ insights.resolved_count }}</strong><span>Resolved</span></div>
+                    <div><strong>{{ insights.critical_count }}</strong><span>Urgent signals</span></div>
+                    <div><strong>{{ insights.top_category or 'None' }}</strong><span>Top category</span></div>
+                    <div><strong>{{ insights.top_area or 'None' }}</strong><span>Most affected area</span></div>
+                </div>
+            </section>
+
             <section class="admin-panel is-visible" data-admin-panel-content="overview">
                 <div class="hostel-stats">
                     <div class="mini-stat">
@@ -282,6 +299,8 @@
             </section>
         </main>
     </div>
+
+    {% include '_ai_widget.html' %}
 
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>

@@ -1,11 +1,12 @@
 import io
+import uuid
 
 import pytest
 from PIL import Image
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app import app, ensure_default_admin
-from database import Complaint, Notification, User, db
+from app import ai_service, app, ensure_default_admin
+from database import AIAnalysis, Complaint, Notification, User, db
 
 
 @pytest.fixture()
@@ -24,6 +25,7 @@ def make_image():
 
 
 def create_user(username, role, password='test-password'):
+    username = f'{username}-{uuid.uuid4().hex[:8]}'
     user = User(
         username=username,
         password=generate_password_hash(password),
@@ -57,6 +59,16 @@ def test_login_and_dashboard_routes(client):
     assert b'href="/admin/login"' in response.data
     assert client.get('/register').status_code == 200
     assert client.get('/health').json == {'status': 'healthy'}
+
+
+def test_admin_ai_query_requires_admin(client):
+    response = client.post('/admin/ai-query', data={'question': 'total complaints'})
+    assert response.status_code == 403
+
+
+def test_admin_ai_status_requires_admin(client):
+    response = client.get('/admin/ai/status')
+    assert response.status_code == 403
 
 
 def test_hostel_category_values_match_server_validation(client):
@@ -162,11 +174,14 @@ def test_valid_image_uses_uuid_filename(client):
             follow_redirects=False,
         )
 
-        complaint = Complaint.query.filter_by(title='Valid upload').first()
+        complaint = Complaint.query.filter_by(
+            title='Valid upload', student_id=student.id
+        ).first()
         assert response.status_code == 302
         assert complaint is not None
         assert complaint.image_filename.endswith('.png')
         assert 'student-supplied' not in complaint.image_filename
+        AIAnalysis.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
         db.session.delete(complaint)
         db.session.delete(student)
         db.session.commit()
@@ -216,7 +231,9 @@ def test_ticket_and_notifications_follow_complaint_lifecycle(client):
             'priority': 'High',
         })
         assert response.status_code == 302
-        complaint = Complaint.query.filter_by(title='Water leak').first()
+        complaint = Complaint.query.filter_by(
+            title='Water leak', student_id=student.id
+        ).first()
         assert complaint is not None
         assert complaint.ticket_number.startswith('SCCS-')
         assert Notification.query.filter_by(recipient_id=admin.id, complaint_id=complaint.id).count() == 1
@@ -235,7 +252,38 @@ def test_ticket_and_notifications_follow_complaint_lifecycle(client):
         assert any('In Progress' in notification.message for notification in status_notifications)
 
         Notification.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+        AIAnalysis.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
         db.session.delete(complaint)
         db.session.delete(staff)
         db.session.delete(student)
         db.session.commit()
+
+
+def test_enabled_local_ai_audits_complaint_analysis(client):
+    with app.app_context():
+        student = create_user('ai-student', 'student')
+        set_session(client, student)
+        previous_enabled = ai_service.enabled
+        ai_service.enabled = True
+        try:
+            response = client.post('/submit_complaint', data={
+                'title': 'Sparking socket',
+                'description': 'An exposed wire is sparking in the hostel room.',
+                'location_type': 'Hostel',
+                'campus_area': 'Main Hostel',
+                'category': 'Electrical',
+                'priority': 'Urgent',
+            })
+            assert response.status_code == 302
+            complaint = Complaint.query.filter_by(title='Sparking socket').first()
+            assert complaint is not None
+            assert complaint.ai_safety_critical is True
+            assert complaint.ai_department == 'Electrical Maintenance'
+            assert AIAnalysis.query.filter_by(complaint_id=complaint.id).count() == 1
+            AIAnalysis.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+            Notification.query.filter_by(complaint_id=complaint.id).delete(synchronize_session=False)
+            db.session.delete(complaint)
+        finally:
+            ai_service.enabled = previous_enabled
+            db.session.delete(student)
+            db.session.commit()

@@ -147,4 +147,43 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    const aiWidgetToggle = document.getElementById('aiWidgetToggle');
+    const aiWidgetPanel = document.getElementById('aiWidgetPanel');
+    const aiWidgetClose = document.getElementById('aiWidgetClose');
+    if (aiWidgetToggle && aiWidgetPanel) {
+        const closeAiWidget = () => {
+            aiWidgetPanel.hidden = true;
+            aiWidgetToggle.setAttribute('aria-expanded', 'false');
+        };
+        aiWidgetToggle.addEventListener('click', () => {
+            const isOpen = aiWidgetToggle.getAttribute('aria-expanded') === 'true';
+            aiWidgetPanel.hidden = isOpen;
+            aiWidgetToggle.setAttribute('aria-expanded', String(!isOpen));
+        });
+        aiWidgetClose?.addEventListener('click', closeAiWidget);
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeAiWidget();
+        });
+    }
+
+    const aiQueryForm = document.getElementById('aiQueryForm');
+    const aiQueryResult = document.getElementById('aiQueryResult');
+    if (aiQueryForm && aiQueryResult) {
+        aiQueryForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            aiQueryResult.textContent = 'Analyzing complaint data...';
+            try {
+                const response = await fetch('/admin/ai-query', {
+                    method: 'POST',
+                    body: new FormData(aiQueryForm),
+                    headers: { 'Accept': 'application/json' },
+                });
+                const result = await response.json();
+                aiQueryResult.textContent = response.ok ? result.answer : (result.error || 'Unable to answer that question.');
+            } catch (error) {
+                aiQueryResult.textContent = 'AI query is temporarily unavailable.';
+            }
+        });
+    }
 });
