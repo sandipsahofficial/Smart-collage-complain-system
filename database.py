@@ -18,6 +18,12 @@ class User(db.Model):
     hostel_name = db.Column(db.String(80), nullable=True)
     block = db.Column(db.String(50), nullable=True)
     room_number = db.Column(db.String(20), nullable=True)
+    department = db.Column(db.String(100), nullable=True)
+    year = db.Column(db.String(20), nullable=True)
+    section = db.Column(db.String(20), nullable=True)
+    notifications_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    announcement_notifications_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    theme = db.Column(db.String(20), nullable=False, default='light')
 
 
 class Complaint(db.Model):
@@ -45,6 +51,8 @@ class Complaint(db.Model):
     ai_confidence = db.Column(db.Float, nullable=True)
     ai_reasons = db.Column(db.Text, nullable=True)
     ai_safety_critical = db.Column(db.Boolean, nullable=False, default=False)
+    escalated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    sla_due_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     student = db.relationship(
         'User',
@@ -59,6 +67,11 @@ class Complaint(db.Model):
     comments = db.relationship('Comment', backref='complaint', lazy=True)
     ai_analyses = db.relationship(
         'AIAnalysis',
+        back_populates='complaint',
+        cascade='all, delete-orphan',
+    )
+    audit_events = db.relationship(
+        'AuditEvent',
         back_populates='complaint',
         cascade='all, delete-orphan',
     )
@@ -85,6 +98,30 @@ class Notification(db.Model):
 
     recipient = db.relationship('User', backref=db.backref('notifications', lazy=True))
     complaint = db.relationship('Complaint', backref=db.backref('notifications', lazy=True))
+
+
+class Announcement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(80), nullable=True)
+    importance = db.Column(db.String(20), nullable=False, default='normal')
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    author = db.relationship('User', backref=db.backref('announcements', lazy=True))
+
+
+class AuditEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    complaint_id = db.Column(db.Integer, db.ForeignKey('complaint.id'), nullable=True, index=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True, index=True)
+    event_type = db.Column(db.String(50), nullable=False, index=True)
+    details = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+    complaint = db.relationship('Complaint', back_populates='audit_events')
+    actor = db.relationship('User', backref=db.backref('audit_events', lazy=True))
 
 
 class AIAnalysis(db.Model):

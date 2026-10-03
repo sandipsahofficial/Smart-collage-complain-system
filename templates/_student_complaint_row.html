@@ -1,0 +1,12 @@
+<article class="student-complaint-row" data-complaint-id="{{ complaint.id }}">
+    <div class="student-complaint-main">
+        <span class="student-complaint-ticket">{{ complaint.ticket_number or ('Complaint #' ~ complaint.id) }}</span>
+        <h3>{{ complaint.title }}</h3>
+        <p>{{ complaint.category }} · {{ complaint.location_type }} · {{ complaint.campus_area }}</p>
+        <small>Submitted {{ complaint.created_at.strftime('%d %b %Y') }}{% if complaint.assigned_staff %} · Assigned to
+            {{ complaint.assigned_staff.full_name or complaint.assigned_staff.username }}{% endif %}</small>
+    </div>
+    <div class="student-complaint-side"><span class="badge {{ complaint.status|lower|replace(' ', '-') }}">{{
+            complaint.status }}</span><a
+            href="{{ url_for('student_complaint_detail', complaint_id=complaint.id) }}">View details</a></div>
+</article>

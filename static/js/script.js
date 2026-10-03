@@ -1,5 +1,57 @@
 document.addEventListener("DOMContentLoaded", () => {
 
+    const studentMenuToggle = document.getElementById('studentMenuToggle');
+    const studentSidebar = document.getElementById('studentSidebar');
+    if (studentMenuToggle && studentSidebar) {
+        studentMenuToggle.addEventListener('click', () => {
+            const isOpen = studentSidebar.classList.toggle('is-open');
+            studentMenuToggle.setAttribute('aria-expanded', String(isOpen));
+        });
+        studentSidebar.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
+            studentSidebar.classList.remove('is-open');
+            studentMenuToggle.setAttribute('aria-expanded', 'false');
+        }));
+    }
+
+    const studentProfileTrigger = document.getElementById('studentProfileTrigger');
+    const studentProfilePanel = document.getElementById('studentProfilePanel');
+    if (studentProfileTrigger && studentProfilePanel) {
+        const closeStudentProfile = () => {
+            studentProfilePanel.hidden = true;
+            studentProfileTrigger.setAttribute('aria-expanded', 'false');
+        };
+        studentProfileTrigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const isOpen = studentProfileTrigger.getAttribute('aria-expanded') === 'true';
+            studentProfilePanel.hidden = isOpen;
+            studentProfileTrigger.setAttribute('aria-expanded', String(!isOpen));
+        });
+        studentProfilePanel.addEventListener('click', (event) => event.stopPropagation());
+        document.addEventListener('click', closeStudentProfile);
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeStudentProfile();
+        });
+    }
+
+    document.querySelectorAll('[data-open-ai]').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            document.getElementById('aiWidgetToggle')?.click();
+        });
+    });
+
+    if (window.io) {
+        const socket = window.io({ transports: ['websocket', 'polling'] });
+        socket.on('complaint_updated', (payload) => {
+            const card = document.querySelector(`[data-complaint-id="${payload.complaint_id}"]`);
+            if (!card || !payload.status) return;
+            const badge = card.querySelector('.badge');
+            if (!badge) return;
+            badge.className = `badge ${payload.status.toLowerCase().replace(/\s+/g, '-')}`;
+            badge.textContent = payload.status;
+        });
+    }
+
     // 1. Auto-hide Flash/Alert Messages after 3 seconds
     const flashMessages = document.querySelectorAll('.alert');
     if (flashMessages.length > 0) {
@@ -14,16 +66,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 2. Registration Form Validation (Password Matching)
     const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', (e) => {
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
+    const passwordInput = document.getElementById('password');
+    const confirmPasswordInput = document.getElementById('confirm_password');
 
-            if (password !== confirmPassword) {
-                e.preventDefault(); // Form submit roko
-                alert("Passwords do not match! Please enter exactly same passwords.");
+    if (registerForm && passwordInput && confirmPasswordInput) {
+        const validatePasswords = () => {
+            if (passwordInput.value !== confirmPasswordInput.value) {
+                confirmPasswordInput.setCustomValidity("Passwords do not match!");
+            } else {
+                confirmPasswordInput.setCustomValidity("");
             }
-        });
+        };
+        passwordInput.addEventListener('change', validatePasswords);
+        confirmPasswordInput.addEventListener('keyup', validatePasswords);
     }
 
     // 3. Status Update Confirmation for Admin/Staff
@@ -170,11 +225,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const aiQueryForm = document.getElementById('aiQueryForm');
     const aiQueryResult = document.getElementById('aiQueryResult');
     if (aiQueryForm && aiQueryResult) {
+        document.querySelectorAll('[data-ai-prompt]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const question = document.getElementById('aiQuestion');
+                if (question) {
+                    question.value = button.dataset.aiPrompt;
+                    question.focus();
+                }
+            });
+        });
         aiQueryForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             aiQueryResult.textContent = 'Analyzing complaint data...';
             try {
-                const response = await fetch('/admin/ai-query', {
+                const response = await fetch(aiQueryForm.dataset.endpoint || '/admin/ai-query', {
                     method: 'POST',
                     body: new FormData(aiQueryForm),
                     headers: { 'Accept': 'application/json' },
@@ -186,4 +250,80 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    // Dynamic Search Filter for Complaints
+    const setupSearchFilter = (inputId, listId) => {
+        const searchInput = document.getElementById(inputId);
+        const complaintList = document.getElementById(listId);
+
+        if (searchInput && complaintList) {
+            searchInput.addEventListener('input', function (e) {
+                const term = e.target.value.toLowerCase();
+                const cards = complaintList.querySelectorAll('.complaint-card');
+
+                cards.forEach(card => {
+                    const textContent = card.textContent.toLowerCase();
+                    if (textContent.includes(term)) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            });
+        }
+    };
+
+    setupSearchFilter('adminComplaintSearch', 'adminComplaintList');
+    setupSearchFilter('staffComplaintSearch', 'staffComplaintList');
+    setupSearchFilter('studentComplaintSearch', 'studentComplaintList');
+
+    // AI Analysis Generation
+    const aiButtons = document.querySelectorAll('.generate-ai-btn');
+    aiButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const complaintId = btn.getAttribute('data-id');
+            const csrf = btn.getAttribute('data-csrf');
+            const container = btn.closest('.ai-analysis-section');
+            const resultsDiv = container.querySelector('#ai-results-' + complaintId);
+            const errorDiv = container.querySelector('.ai-error');
+
+            btn.disabled = true;
+            btn.textContent = 'Generating... (Please wait)';
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', csrf);
+
+                const response = await fetch('/api/ai/analyze/' + complaintId, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to generate analysis.');
+                }
+
+                resultsDiv.querySelector('.ai-cat').textContent = data.category;
+                resultsDiv.querySelector('.ai-pri').textContent = data.priority;
+                resultsDiv.querySelector('.ai-dep').textContent = data.department;
+                resultsDiv.querySelector('.ai-sum').textContent = data.summary;
+                resultsDiv.querySelector('.ai-act').textContent = data.next_action;
+                resultsDiv.querySelector('.ai-draft').textContent = data.draft_response;
+
+                resultsDiv.style.display = 'block';
+                btn.style.display = 'none'; // Hide button after success
+
+            } catch (error) {
+                errorDiv.textContent = error.message;
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Generate AI Analysis';
+            }
+        });
+    });
 });

@@ -37,7 +37,10 @@
                 </button>
             </nav>
 
-            <a class="sidebar-logout" href="{{ url_for('logout') }}">Log out</a>
+            <form class="sidebar-logout" action="{{ url_for('logout') }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Log out</button>
+            </form>
         </aside>
 
         <main class="admin-main">
@@ -219,15 +222,22 @@
             </section>
 
             <section class="admin-panel" data-admin-panel-content="history" hidden>
-                <div class="panel-heading">
-                    <span class="eyebrow">Workspace</span>
-                    <h3>Complaint History</h3>
-                    <p>Review the current status and details of your submitted requests.</p>
+                <div class="panel-heading"
+                    style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <span class="eyebrow">Workspace</span>
+                        <h3>Complaint History</h3>
+                        <p>Review the current status and details of your submitted requests.</p>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="studentComplaintSearch" placeholder="Search history..."
+                            style="padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; min-width: 250px;">
+                    </div>
                 </div>
-                <div class="complaint-list">
+                <div class="complaint-list" id="studentComplaintList">
                     {% if complaints %}
                     {% for complaint in complaints %}
-                    <article class="complaint-card">
+                    <article class="complaint-card" data-complaint-id="{{ complaint.id }}">
                         <div class="complaint-card-title">
                             <h3>{{ complaint.title }}</h3>
                             <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
@@ -239,8 +249,42 @@
                         <p class="complaint-meta">Category: {{ complaint.category }} | Priority: {{ complaint.priority
                             }} | Date: {{ complaint.created_at.strftime('%Y-%m-%d') }}</p>
                         {% if complaint.image_filename %}
-                        <img src="{{ complaint_image_url(complaint.image_filename) }}" alt="Complaint image"
+                        <img src="{{ url_for('complaint_image', complaint_id=complaint.id) }}" alt="Complaint image"
                             class="complaint-image">
+                        {% endif %}
+
+                        <div class="comments-section"
+                            style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                            <h4>Comments</h4>
+                            {% if complaint.comments %}
+                            {% for comment in complaint.comments %}
+                            <div class="comment"
+                                style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f9fafb; border-radius: 4px;">
+                                <strong>{{ comment.sender.username }}</strong> <small>{{
+                                    comment.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                <p style="margin: 0;">{{ comment.text }}</p>
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <p style="font-size: 0.9em; color: #6b7280;">No comments yet.</p>
+                            {% endif %}
+
+                            <form action="{{ url_for('add_comment', complaint_id=complaint.id) }}" method="POST"
+                                style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="text" name="text" placeholder="Add a comment..." required
+                                    style="flex-grow: 1; padding: 0.5rem;">
+                                <button type="submit" style="padding: 0.5rem 1rem;">Send</button>
+                            </form>
+                        </div>
+
+                        {% if complaint.status == 'Resolved' %}
+                        <form action="{{ url_for('close_complaint', complaint_id=complaint.id) }}" method="POST"
+                            style="margin-top: 1rem; text-align: right;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="action-form"
+                                style="background-color: #059669; color: white;">Confirm & Close</button>
+                        </form>
                         {% endif %}
                     </article>
                     {% endfor %}
@@ -272,6 +316,7 @@
 
     {% include '_ai_widget.html' %}
 
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 

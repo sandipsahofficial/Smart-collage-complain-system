@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title|default('Student Portal') }} | SCCS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="student-portal-body">
+    <div class="student-portal-shell">
+        <aside class="student-sidebar" id="studentSidebar">
+            <div class="student-brand">
+                <span class="student-brand-mark">SCCS</span>
+                <div><strong>Student Portal</strong><small>{{ current_user.full_name or current_user.username }}</small>
+                </div>
+            </div>
+            <nav class="student-nav" aria-label="Student portal navigation">
+                <span class="student-nav-label">Workspace</span>
+                <a class="student-nav-link {% if active_page == 'overview' %}is-active{% endif %}"
+                    href="{{ url_for('student_dashboard') }}"><span>01</span>Overview</a>
+                <a class="student-nav-link {% if active_page == 'new-complaint' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='new-complaint') }}"><span>02</span>New Complaint</a>
+                <a class="student-nav-link {% if active_page == 'complaints' %}is-active{% endif %}"
+                    href="{{ url_for('student_complaints') }}"><span>03</span>My Complaints</a>
+                <a class="student-nav-link {% if active_page == 'notifications' %}is-active{% endif %}"
+                    href="{{ url_for('student_notifications') }}"><span>04</span>Notifications{% if
+                    unread_notification_count %}<b>{{ unread_notification_count }}</b>{% endif %}</a>
+                <span class="student-nav-label">Campus</span>
+                <a class="student-nav-link {% if active_page == 'announcements' %}is-active{% endif %}"
+                    href="{{ url_for('student_announcements') }}"><span>05</span>Announcements</a>
+                <span class="student-nav-label">Support</span>
+                <a class="student-nav-link" href="#aiWidgetPanel" data-open-ai><span>06</span>AI Assistant</a>
+                <a class="student-nav-link {% if active_page == 'help' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='help') }}"><span>07</span>Help &amp; FAQ</a>
+                <a class="student-nav-link {% if active_page == 'contact' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='contact') }}"><span>08</span>Contact Support</a>
+                <span class="student-nav-label">Account</span>
+                <a class="student-nav-link {% if active_page == 'profile' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='profile') }}"><span>09</span>My Profile</a>
+                <a class="student-nav-link {% if active_page == 'settings' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='settings') }}"><span>10</span>Settings</a>
+                <a class="student-nav-link {% if active_page == 'password' %}is-active{% endif %}"
+                    href="{{ url_for('student_page', page='password') }}"><span>11</span>Change Password</a>
+            </nav>
+            <form class="student-logout" action="{{ url_for('logout') }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"><span>↗</span>Log out</button>
+            </form>
+        </aside>
+
+        <main class="student-main">
+            <header class="student-topbar">
+                <button class="student-menu-toggle" type="button" id="studentMenuToggle" aria-controls="studentSidebar"
+                    aria-expanded="false">Menu</button>
+                <div class="student-topbar-spacer"></div>
+                <a class="notification-toggle" href="{{ url_for('student_notifications') }}" aria-label="Notifications"
+                    aria-controls="studentNotifications"><span aria-hidden="true">&#128276;</span>{% if
+                    unread_notification_count %}<b>{{
+                        unread_notification_count }}</b>{% endif %}</a>
+                <span id="studentNotifications" hidden></span>
+                <div class="student-profile-menu">
+                    <button class="student-profile-trigger" type="button" id="studentProfileTrigger"
+                        aria-expanded="false" aria-controls="studentProfilePanel">
+                        <span class="student-avatar">{{ (current_user.full_name or current_user.username)[:1]|upper
+                            }}</span>
+                        <span class="student-profile-trigger-copy"><strong>{{ current_user.full_name or
+                                current_user.username }}</strong><small>Student</small></span>
+                    </button>
+                    <section class="student-profile-panel" id="studentProfilePanel" hidden>
+                        <div class="student-profile-panel-heading">
+                            <span class="student-avatar student-avatar-large">{{ (current_user.full_name or
+                                current_user.username)[:1]|upper }}</span>
+                            <div>
+                                <h2>{{ current_user.full_name or current_user.username }}</h2><span>Student</span>
+                            </div>
+                        </div>
+                        <dl class="student-profile-summary">
+                            <div>
+                                <dt>Email</dt>
+                                <dd>{{ current_user.email or 'Not provided' }}</dd>
+                            </div>
+                            <div>
+                                <dt>Roll No.</dt>
+                                <dd>{{ current_user.username }}</dd>
+                            </div>
+                            <div>
+                                <dt>Phone</dt>
+                                <dd>{{ current_user.phone or 'Not provided' }}</dd>
+                            </div>
+                            <div>
+                                <dt>Course / Dept.</dt>
+                                <dd>{{ current_user.department or 'Not provided' }}</dd>
+                            </div>
+                        </dl>
+                        <div class="student-profile-panel-actions">
+                            <a href="{{ url_for('student_notifications') }}"><span
+                                    aria-hidden="true">&#128276;</span>&nbsp; Notifications{% if
+                                unread_notification_count %}<b>{{ unread_notification_count }}</b>{% endif %}</a>
+                            <a href="{{ url_for('student_page', page='profile') }}">View profile</a>
+                            <form action="{{ url_for('logout') }}" method="POST"><input type="hidden" name="csrf_token"
+                                    value="{{ csrf_token() }}"><button type="submit">↗&nbsp; Logout</button></form>
+                        </div>
+                    </section>
+                </div>
+            </header>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}<div class="student-flashes">{% for category, message in messages %}<div
+                    class="alert {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+            {% endwith %}
+
+            {% if active_page == 'overview' %}
+            <select hidden aria-hidden="true" tabindex="-1">{% for value in category_options %}<option
+                    value="{{ value }}">{{ value }}</option>{% endfor %}</select>
+            <section class="student-hero">
+                <div><span class="eyebrow">Student support desk</span>
+                    <h1>{{ greeting }}, {{ current_user.full_name or current_user.username }}.</h1>
+                    <p>Here's an overview of your complaints and campus support requests.</p>
+                </div>
+                <a class="primary-btn" href="{{ url_for('student_page', page='new-complaint') }}">New Complaint</a>
+            </section>
+            <section class="student-stat-grid" aria-label="Complaint statistics">
+                {% for key, label in [('total', 'Total Complaints'), ('pending', 'Pending'), ('in_progress', 'In
+                Progress'), ('resolved', 'Resolved')] %}
+                <a class="student-stat-card"
+                    href="{{ url_for('student_complaints', status=key if key != 'total' else '') }}"><span
+                        class="student-stat-icon">{{ loop.index }}</span><strong>{{ stats[key] }}</strong><span>{{ label
+                        }}</span></a>
+                {% endfor %}
+            </section>
+            <section class="student-section-grid">
+                <div class="student-panel">
+                    <div class="student-section-heading">
+                        <div><span class="eyebrow">Shortcuts</span>
+                            <h2>Quick actions</h2>
+                        </div>
+                    </div>
+                    <div class="student-action-grid"><a
+                            href="{{ url_for('student_page', page='new-complaint') }}"><b>+</b><strong>New
+                                Complaint</strong><small>Report a campus issue</small></a><a
+                            href="{{ url_for('student_complaints') }}"><b>#</b><strong>Track
+                                Complaint</strong><small>Review current progress</small></a><a
+                            href="{{ url_for('student_notifications') }}"><b>!</b><strong>Notifications</strong><small>{{
+                                unread_notification_count }} unread update(s)</small></a></div>
+                </div>
+                <div class="student-panel">
+                    <div class="student-section-heading">
+                        <div><span class="eyebrow">Campus</span>
+                            <h2>Announcements</h2>
+                        </div><a href="{{ url_for('student_announcements') }}">View all</a>
+                    </div>{% if announcements %}{% for item in announcements[:3] %}<article
+                        class="student-announcement-row"><span class="announcement-dot {{ item.importance }}"></span>
+                        <div><strong>{{ item.title }}</strong>
+                            <p>{{ item.description|truncate(100) }}</p><small>{{ item.created_at.strftime('%d %b %Y')
+                                }}</small>
+                        </div>
+                    </article>{% endfor %}{% else %}<p class="empty-state">No announcements available.</p>{% endif %}
+                </div>
+            </section>
+            <section class="student-panel">
+                <div class="student-section-heading">
+                    <div><span class="eyebrow">Latest activity</span>
+                        <h2>Recent complaints</h2>
+                    </div><a href="{{ url_for('student_complaints') }}">View all complaints</a>
+                </div>{% if recent_complaints %}<div class="student-complaint-list">{% for complaint in
+                    recent_complaints %}{% include '_student_complaint_row.html' %}{% endfor %}</div>{% else %}<div
+                    class="student-empty"><strong>No complaints yet</strong>
+                    <p>Submit your first complaint when you need help.</p><a class="primary-btn"
+                        href="{{ url_for('student_page', page='new-complaint') }}">Create Complaint</a>
+                </div>{% endif %}
+            </section>
+
+            {% elif active_page == 'complaints' %}
+            <section class="student-page-heading"><span class="eyebrow">Workspace</span>
+                <h1>My Complaints</h1>
+                <p>Search and filter complaints submitted from your account.</p>
+            </section>
+            <form class="student-filter-bar" method="GET" action="{{ url_for('student_complaints') }}"><input name="q"
+                    value="{{ filters.q }}" placeholder="Search title, ticket, or description"><select name="status">
+                    <option value="">All statuses</option>{% for value in ['Pending','Assigned','In
+                    Progress','Escalated','Resolved','Closed'] %}<option {% if filters.status==value %}selected{% endif
+                        %}>{{ value }}</option>{% endfor %}
+                </select><select name="category">
+                    <option value="">All categories</option>{% for value in categories %}<option {% if
+                        filters.category==value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                </select><select name="location_type">
+                    <option value="">College or Hostel</option>
+                    <option {% if filters.location_type=='College' %}selected{% endif %}>College</option>
+                    <option {% if filters.location_type=='Hostel' %}selected{% endif %}>Hostel</option>
+                </select><select name="sort">
+                    <option value="newest" {% if filters.sort !='oldest' %}selected{% endif %}>Newest first</option>
+                    <option value="oldest" {% if filters.sort=='oldest' %}selected{% endif %}>Oldest first</option>
+                </select><button class="primary-btn" type="submit">Filter</button></form>
+            <section class="student-panel">{% if complaints %}<div class="student-complaint-list">{% for complaint in
+                    complaints %}{% include '_student_complaint_row.html' %}{% endfor %}</div>{% else %}<div
+                    class="student-empty"><strong>No complaints found.</strong>
+                    <p>Try changing your filters or submit a new request.</p><a class="primary-btn"
+                        href="{{ url_for('student_page', page='new-complaint') }}">Create Complaint</a>
+                </div>{% endif %}</section>
+
+            {% elif active_page == 'new-complaint' %}
+            <section class="student-page-heading"><span class="eyebrow">Workspace</span>
+                <h1>New Complaint</h1>
+                <p>Give the support team enough detail to resolve the issue quickly.</p>
+            </section>
+            <form id="studentComplaintForm" action="{{ url_for('submit_complaint') }}" method="POST"
+                enctype="multipart/form-data" class="student-form"><input type="hidden" name="csrf_token"
+                    value="{{ csrf_token() }}">
+                <div class="student-form-grid"><label>Complaint type<select name="location_type" id="locationType"
+                            required>
+                            <option value="" selected disabled>Choose type</option>
+                            <option value="College">College</option>
+                            <option value="Hostel">Hostel</option>
+                        </select></label><label>Category<select name="category" id="studentCategory" required>
+                            <option value="" selected disabled>Choose category</option>{% for value in category_options
+                            %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+                        </select></label><label>Location<input name="campus_area" required
+                            placeholder="Building, hostel, or campus area"></label><label>Room / block<input
+                            name="room_number" placeholder="Optional room or area detail"></label><label>Subject<input
+                            name="title" maxlength="100" required
+                            placeholder="Short summary of the issue"></label><label>Priority<select name="priority"
+                            required>{% for value in ['Low','Medium','High','Urgent'] %}<option value="{{ value }}" {%
+                                if value=='Medium' %}selected{% endif %}>{{ value }}</option>{% endfor
+                            %}</select></label></div><label>Description<textarea name="description" rows="7" required
+                        placeholder="Describe what happened, where, and when."></textarea></label><label
+                    class="upload-box">Evidence image<input type="file" name="image"
+                        accept="image/jpeg,image/png,image/gif,image/webp"><small>JPG, PNG, GIF, or WEBP up to 5
+                        MB.</small></label><button class="primary-btn" type="submit">Submit Complaint</button>
+            </form>
+
+            {% elif active_page == 'notifications' %}
+            <section class="student-page-heading"><span class="eyebrow">Workspace</span>
+                <h1>Notifications</h1>
+                <p>Updates from your complaints and campus support team.</p>
+            </section>
+            <section class="student-panel">
+                <div class="student-section-heading">
+                    <h2>{{ unread_notification_count }} unread update(s)</h2>{% if unread_notification_count %}<form
+                        action="{{ url_for('mark_all_notifications_read') }}" method="POST"><input type="hidden"
+                            name="csrf_token" value="{{ csrf_token() }}"><button class="secondary-btn">Mark all as
+                            read</button></form>{% endif %}
+                </div>{% if notifications %}<div class="student-notifications">{% for notification in notifications %}
+                    <article class="student-notification {% if not notification.is_read %}is-unread{% endif %}">
+                        <div><strong>{{ notification.title }}</strong>
+                            <p>{{ notification.message }}</p><small>{{ notification.created_at.strftime('%d %b %Y,
+                                %H:%M') }}</small>
+                        </div>{% if not notification.is_read %}<form
+                            action="{{ url_for('mark_notification_read', notification_id=notification.id) }}"
+                            method="POST"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button
+                                class="notification-read">Mark read</button></form>{% endif %}
+                    </article>{% endfor %}
+                </div>{% else %}<p class="empty-state">No notifications yet.</p>{% endif %}
+            </section>
+
+            {% elif active_page == 'announcements' %}
+            <section class="student-page-heading"><span class="eyebrow">Campus</span>
+                <h1>Announcements</h1>
+                <p>Important notices published by the college support team.</p>
+            </section>
+            <section class="student-panel">{% if announcements %}<div class="announcement-grid">{% for item in
+                    announcements %}<article class="announcement-card"><span
+                            class="announcement-tag {{ item.importance }}">{{ item.importance }}</span>
+                        <h2>{{ item.title }}</h2>
+                        <p>{{ item.description }}</p><small>{{ item.category or 'Campus notice' }} · {{
+                            item.created_at.strftime('%d %b %Y') }}</small>
+                    </article>{% endfor %}</div>{% else %}<div class="student-empty"><strong>No announcements
+                        available.</strong>
+                    <p>New campus notices will appear here.</p>
+                </div>{% endif %}</section>
+
+            {% elif active_page == 'profile' %}
+            <section class="student-page-heading"><span class="eyebrow">Account</span>
+                <h1>My Profile</h1>
+                <p>Your identity and campus details.</p>
+            </section>
+            <section class="student-panel">
+                <form class="student-form" method="POST" action="{{ url_for('student_profile') }}"><input type="hidden"
+                        name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="student-form-grid"><label>Full name<input name="full_name"
+                                value="{{ current_user.full_name or '' }}" required></label><label>Username<input
+                                value="{{ current_user.username }}" disabled></label><label>Email<input name="email"
+                                type="email" value="{{ current_user.email or '' }}"></label><label>Phone<input
+                                name="phone" value="{{ current_user.phone or '' }}"></label><label>Department<input
+                                name="department" value="{{ current_user.department or '' }}"></label><label>Year<input
+                                name="year" value="{{ current_user.year or '' }}"></label><label>Section<input
+                                name="section" value="{{ current_user.section or '' }}"></label><label>Hostel /
+                            campus<input name="hostel_name" value="{{ current_user.hostel_name or '' }}"></label></div>
+                    <button class="primary-btn" type="submit">Save profile</button>
+                </form>
+            </section>
+
+            {% elif active_page == 'settings' %}
+            <section class="student-page-heading"><span class="eyebrow">Account</span>
+                <h1>Settings</h1>
+                <p>Choose how SCCS keeps you informed.</p>
+            </section>
+            <section class="student-panel">
+                <form class="student-form" method="POST" action="{{ url_for('student_settings') }}"><input type="hidden"
+                        name="csrf_token" value="{{ csrf_token() }}"><label class="setting-row"><span><strong>Complaint
+                                updates</strong><small>Receive status and staff response
+                                notifications.</small></span><input type="checkbox" name="notifications_enabled" {% if
+                            current_user.notifications_enabled %}checked{% endif %}></label><label
+                        class="setting-row"><span><strong>Campus announcements</strong><small>Receive important campus
+                                notices.</small></span><input type="checkbox" name="announcement_notifications_enabled"
+                            {% if current_user.announcement_notifications_enabled %}checked{% endif
+                            %}></label><label>Appearance<select name="theme">
+                            <option value="light" {% if current_user.theme=='light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if current_user.theme=='dark' %}selected{% endif %}>Dark</option>
+                        </select></label><button class="primary-btn" type="submit">Save settings</button></form>
+            </section>
+
+            {% elif active_page == 'password' %}
+            <section class="student-page-heading"><span class="eyebrow">Security</span>
+                <h1>Change Password</h1>
+                <p>Use your current password to set a new secure password.</p>
+            </section>
+            <section class="student-panel">
+                <form action="{{ url_for('change_student_password') }}" method="POST" class="student-form"><input
+                        type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Current password<input
+                            type="password" name="current_password" required></label><label>New password<input
+                            type="password" name="new_password" minlength="8" required></label><label>Confirm new
+                        password<input type="password" name="confirm_password" minlength="8" required></label><button
+                        class="primary-btn" type="submit">Update password</button></form>
+            </section>
+
+            {% elif active_page == 'help' %}
+            <section class="student-page-heading"><span class="eyebrow">Support</span>
+                <h1>Help &amp; FAQ</h1>
+                <p>Answers to common complaint and support questions.</p>
+            </section>
+            <section class="student-panel faq-list">{% for question, answer in faqs %}<details>
+                    <summary>{{ question }}</summary>
+                    <p>{{ answer }}</p>
+                </details>{% endfor %}</section>
+
+            {% elif active_page == 'contact' %}
+            <section class="student-page-heading"><span class="eyebrow">Support</span>
+                <h1>Contact Support</h1>
+                <p>Use the channels below for help. Contact details are configurable by your administrator.</p>
+            </section>
+            <section class="student-section-grid">
+                <div class="student-panel">
+                    <h2>Student Support</h2>
+                    <p>Email: {{ support_contacts.email }}</p>
+                    <p>Phone: {{ support_contacts.phone }}</p>
+                    <p>Hours: {{ support_contacts.hours }}</p>
+                </div>
+                <div class="student-panel">
+                    <h2>Emergency</h2>
+                    <p>{{ support_contacts.emergency }}</p>
+                </div>
+            </section>
+            {% endif %}
+        </main>
+    </div>
+    {% include '_ai_widget.html' %}
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

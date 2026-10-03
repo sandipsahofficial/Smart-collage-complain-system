@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ complaint.ticket_number }} | SCCS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="student-portal-body">
+    <div class="student-portal-shell">
+        <aside class="student-sidebar" id="studentSidebar">
+            <div class="student-brand"><span class="student-brand-mark">SCCS</span>
+                <div><strong>Student Portal</strong><small>{{ current_user.full_name or current_user.username }}</small>
+                </div>
+            </div>
+            <nav class="student-nav"><span class="student-nav-label">Workspace</span><a class="student-nav-link"
+                    href="{{ url_for('student_dashboard') }}"><span>01</span>Overview</a><a
+                    class="student-nav-link is-active" href="{{ url_for('student_complaints') }}"><span>03</span>My
+                    Complaints</a><a class="student-nav-link"
+                    href="{{ url_for('student_notifications') }}"><span>04</span>Notifications</a></nav>
+            <form class="student-logout" action="{{ url_for('logout') }}" method="POST"><input type="hidden"
+                    name="csrf_token" value="{{ csrf_token() }}"><button type="submit">↗ Log out</button></form>
+        </aside>
+        <main class="student-main">
+            <header class="student-topbar"><button class="student-menu-toggle" type="button" id="studentMenuToggle"
+                    aria-controls="studentSidebar" aria-expanded="false">Menu</button>
+                <div class="student-topbar-spacer"></div><a class="student-avatar"
+                    href="{{ url_for('student_page', page='profile') }}">{{ (current_user.full_name or
+                    current_user.username)[:1]|upper }}</a>
+            </header>
+            <section class="student-page-heading"><a class="back-link" href="{{ url_for('student_complaints') }}">← Back
+                    to My Complaints</a><span class="eyebrow">{{ complaint.ticket_number }}</span>
+                <h1>{{ complaint.title }}</h1>
+                <p>{{ complaint.description }}</p>
+            </section>
+            <section class="student-detail-grid">
+                <div class="student-panel">
+                    <div class="student-detail-header"><span
+                            class="badge {{ complaint.status|lower|replace(' ', '-') }}">{{ complaint.status
+                            }}</span><span>{{ complaint.priority }} priority</span></div>
+                    <dl class="student-detail-list">
+                        <div>
+                            <dt>Category</dt>
+                            <dd>{{ complaint.category }}</dd>
+                        </div>
+                        <div>
+                            <dt>Type</dt>
+                            <dd>{{ complaint.location_type }}</dd>
+                        </div>
+                        <div>
+                            <dt>Location</dt>
+                            <dd>{{ complaint.campus_area }}{% if complaint.room_number %} · {{ complaint.room_number
+                                }}{% endif %}</dd>
+                        </div>
+                        <div>
+                            <dt>Submitted</dt>
+                            <dd>{{ complaint.created_at.strftime('%d %b %Y, %H:%M') }}</dd>
+                        </div>
+                        <div>
+                            <dt>Assigned staff</dt>
+                            <dd>{{ complaint.assigned_staff.full_name or complaint.assigned_staff.username if
+                                complaint.assigned_staff else 'Awaiting assignment' }}</dd>
+                        </div>
+                    </dl>{% if complaint.image_filename %}<img class="complaint-image"
+                        src="{{ url_for('complaint_image', complaint_id=complaint.id) }}"
+                        alt="Evidence attached to complaint">{% endif %}
+                </div>
+                <div class="student-panel"><span class="eyebrow">Progress</span>
+                    <h2>Status timeline</h2>
+                    <div class="student-timeline">{% for event in timeline %}<div
+                            class="student-timeline-item is-complete"><span></span>
+                            <div><strong>{{ event.label }}</strong><small>{{ event.date or 'Recorded in complaint
+                                    history' }}</small></div>
+                        </div>{% endfor %}</div>
+                </div>
+            </section>
+            <section class="student-panel">
+                <div class="student-section-heading">
+                    <h2>Conversation</h2>
+                </div>{% if complaint.comments %}{% for comment in complaint.comments %}<article
+                    class="student-comment"><strong>{{ comment.sender.full_name or comment.sender.username
+                        }}</strong><small>{{ comment.created_at.strftime('%d %b %Y, %H:%M') }}</small>
+                    <p>{{ comment.text }}</p>
+                </article>{% endfor %}{% else %}<p class="empty-state">No responses yet.</p>{% endif %}<form
+                    action="{{ url_for('add_comment', complaint_id=complaint.id) }}" method="POST"
+                    class="student-comment-form"><input type="hidden" name="csrf_token"
+                        value="{{ csrf_token() }}"><input name="text" required
+                        placeholder="Add a message for the support team"><button class="primary-btn"
+                        type="submit">Send</button></form>
+            </section>
+        </main>
+    </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

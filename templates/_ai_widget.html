@@ -7,14 +7,29 @@
     <div class="ai-widget-header">
         <div>
             <span class="eyebrow">Smart assistance</span>
-            <h3>AI Insights</h3>
+            <h3>{% if session.get('role') == 'student' %}AI Support{% else %}AI Insights{% endif %}</h3>
         </div>
         <button type="button" class="ai-widget-close" id="aiWidgetClose"
             aria-label="Close AI assistance">&times;</button>
     </div>
-    <p class="ai-widget-status">{{ ai_status }}</p>
+    <p class="ai-widget-status">{% if session.get('role') == 'student' %}Hello {{ session.get('username') }}. How can I
+        help you?{% else %}{{ ai_status }}{% endif %}</p>
+    {% if session.get('role') == 'student' %}
+    <div class="ai-suggested-actions"><button type="button" data-ai-prompt="How do I create a complaint?">Create a
+            complaint</button><button type="button" data-ai-prompt="Explain my complaint status">Explain
+            status</button><button type="button" data-ai-prompt="How do I track a complaint?">Track complaint</button>
+    </div>
+    <form id="aiQueryForm" class="ai-query-form" data-endpoint="{{ url_for('student_ai_query') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="aiQuestion">Ask SCCS
+            support</label>
+        <div class="ai-query-controls"><input id="aiQuestion" name="question" maxlength="300"
+                placeholder="Ask about complaints or support" required><button type="submit">Ask</button></div>
+        <p id="aiQueryResult" class="ai-query-result" aria-live="polite">Suggestions are guidance only and never submit
+            a complaint.</p>
+    </form>
+    {% endif %}
     {% if session.get('role') == 'admin' %}
-    <form id="aiQueryForm" class="ai-query-form">
+    <form id="aiQueryForm" class="ai-query-form" data-endpoint="{{ url_for('admin_ai_query') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="aiQuestion">Ask about complaints</label>
         <div class="ai-query-controls">

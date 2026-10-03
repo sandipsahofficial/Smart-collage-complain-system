@@ -33,17 +33,23 @@
                 <button type="button" class="sidebar-link" data-admin-panel="student-details">
                     <span class="sidebar-symbol">04</span>Student Account Details
                 </button>
+                <button type="button" class="sidebar-link" data-admin-panel="announcements">
+                    <span class="sidebar-symbol">05</span>Announcements
+                </button>
 
                 <span class="sidebar-label">Administration</span>
                 <button type="button" class="sidebar-link" data-admin-panel="staff-account">
-                    <span class="sidebar-symbol">05</span>Create Staff Account
+                    <span class="sidebar-symbol">06</span>Create Staff Account
                 </button>
                 <button type="button" class="sidebar-link" data-admin-panel="password">
-                    <span class="sidebar-symbol">06</span>Change Admin Password
+                    <span class="sidebar-symbol">07</span>Change Admin Password
                 </button>
             </nav>
 
-            <a class="sidebar-logout" href="{{ url_for('logout') }}">Log out</a>
+            <form class="sidebar-logout" action="{{ url_for('logout') }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Log out</button>
+            </form>
         </aside>
 
         <main class="admin-main">
@@ -138,15 +144,53 @@
             </section>
 
             <section class="admin-panel" data-admin-panel-content="assignment" hidden>
-                <div class="panel-heading">
-                    <span class="eyebrow">Workspace</span>
-                    <h3>Staff Assignment</h3>
-                    <p>Assign each college or hostel complaint to the right maintenance staff member.</p>
+                <div class="panel-heading"
+                    style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <span class="eyebrow">Workspace</span>
+                        <h3>All Complaints</h3>
+                        <p>View, track, and assign college and hostel issues to maintenance staff.</p>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="adminComplaintSearch" placeholder="Search by Ticket, Category, Status..."
+                            style="padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; min-width: 250px;">
+                    </div>
                 </div>
-                <div class="complaint-list">
+                <form method="GET" action="{{ url_for('admin_dashboard') }}" class="management-form"
+                    style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0;">
+                    <select name="status">
+                        <option value="">All statuses</option>
+                        {% for option in ['Pending', 'Assigned', 'In Progress', 'Escalated', 'Resolved', 'Closed'] %}
+                        <option value="{{ option }}" {% if filter_values.get('status')==option %}selected{% endif %}>{{
+                            option }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="category">
+                        <option value="">All categories</option>
+                        {% for option in filter_categories %}
+                        <option value="{{ option[0] }}" {% if filter_values.get('category')==option[0] %}selected{%
+                            endif %}>{{ option[0] }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="block">
+                        <option value="">All blocks</option>
+                        {% for option in filter_blocks %}
+                        <option value="{{ option[0] }}" {% if filter_values.get('block')==option[0] %}selected{% endif
+                            %}>{{ option[0] }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="date" name="date_from" value="{{ filter_values.get('date_from', '') }}">
+                    <input type="date" name="date_to" value="{{ filter_values.get('date_to', '') }}">
+                    <button type="submit">Apply filters</button>
+                    <a class="secondary-btn"
+                        href="{{ url_for('export_complaints_csv', **filter_values.to_dict()) }}">CSV</a>
+                    <a class="secondary-btn"
+                        href="{{ url_for('export_complaints_pdf', **filter_values.to_dict()) }}">PDF</a>
+                </form>
+                <div class="complaint-list" id="adminComplaintList">
                     {% if complaints %}
                     {% for complaint in complaints %}
-                    <article class="complaint-card">
+                    <article class="complaint-card" data-complaint-id="{{ complaint.id }}">
                         <div class="complaint-card-title">
                             <h3>{{ complaint.title }}</h3>
                             <span class="badge {{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status
@@ -165,7 +209,7 @@
                         </div>
                         <p>{{ complaint.description }}</p>
                         {% if complaint.image_filename %}
-                        <img src="{{ complaint_image_url(complaint.image_filename) }}" alt="Complaint evidence"
+                        <img src="{{ url_for('complaint_image', complaint_id=complaint.id) }}" alt="Complaint evidence"
                             class="complaint-image">
                         {% endif %}
                         <form action="{{ url_for('assign_complaint', complaint_id=complaint.id) }}" method="POST"
@@ -181,6 +225,38 @@
                             </select>
                             <button type="submit">Assign Staff</button>
                         </form>
+
+                        <div class="ai-analysis-section"
+                            style="margin-top: 1rem; border: 1px solid #d1d5db; border-radius: 6px; padding: 1rem; background: #f8fafc;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                                <strong><span aria-hidden="true">✨</span> AI Complaint Analysis</strong>
+                                <small style="color: #6b7280;">Generated by Gemini AI</small>
+                            </div>
+                            <div id="ai-results-{{ complaint.id }}"
+                                style="display: none; font-size: 0.9em; margin-bottom: 1rem;">
+                                <p><strong>Category:</strong> <span class="ai-cat"></span></p>
+                                <p><strong>Priority:</strong> <span class="ai-pri"></span></p>
+                                <p><strong>Department:</strong> <span class="ai-dep"></span></p>
+                                <p><strong>Summary:</strong> <span class="ai-sum"></span></p>
+                                <p><strong>Next Action:</strong> <span class="ai-act"></span></p>
+
+                                <div
+                                    style="margin-top: 0.5rem; background: #fff; padding: 0.5rem; border: 1px dashed #ccc;">
+                                    <strong>Draft Response:</strong>
+                                    <p class="ai-draft" style="margin-top: 0.2rem; font-style: italic;"></p>
+                                </div>
+                            </div>
+                            <button type="button" class="generate-ai-btn secondary-btn" data-id="{{ complaint.id }}"
+                                data-csrf="{{ csrf_token() }}" style="width: 100%; font-size: 0.9em;">
+                                Generate AI Analysis
+                            </button>
+                            <div class="ai-error"
+                                style="color: #ef4444; font-size: 0.85em; margin-top: 0.5rem; display: none;"></div>
+                            <div style="font-size: 0.75em; color: #9ca3af; text-align: center; margin-top: 0.5rem;">AI
+                                suggestions may require human verification.</div>
+                        </div>
+
                     </article>
                     {% endfor %}
                     {% else %}
@@ -280,6 +356,33 @@
                 </form>
             </section>
 
+            <section class="admin-panel" data-admin-panel-content="announcements" hidden>
+                <div class="panel-heading"><span class="eyebrow">Campus</span>
+                    <h3>Announcements</h3>
+                    <p>Publish notices that students can see in their portal.</p>
+                </div>
+                <form action="{{ url_for('create_announcement') }}" method="POST"
+                    class="management-form management-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input name="title" maxlength="160" placeholder="Announcement title" required>
+                    <textarea name="description" rows="4" placeholder="Describe the notice" required></textarea>
+                    <div class="form-grid-two"><input name="category" placeholder="Category (optional)"><select
+                            name="importance">
+                            <option value="normal">Normal</option>
+                            <option value="important">Important</option>
+                        </select></div>
+                    <button type="submit">Publish announcement</button>
+                </form>
+                <div class="complaint-list" style="margin-top: 1rem;">{% for announcement in announcements %}<article
+                        class="complaint-card">
+                        <div class="complaint-card-title">
+                            <h3>{{ announcement.title }}</h3><span class="badge">{{ announcement.importance }}</span>
+                        </div>
+                        <p>{{ announcement.description }}</p><small>{{ announcement.created_at.strftime('%d %b %Y')
+                            }}</small>
+                    </article>{% else %}<p class="empty-state">No announcements published yet.</p>{% endfor %}</div>
+            </section>
+
             <section class="admin-panel" data-admin-panel-content="password" hidden>
                 <div class="panel-heading">
                     <span class="eyebrow">Security Settings</span>
@@ -302,6 +405,7 @@
 
     {% include '_ai_widget.html' %}
 
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 
